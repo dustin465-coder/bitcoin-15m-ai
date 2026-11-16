@@ -88,6 +88,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
  </div>
  <div class="decision-action yellow" id="signal">NO TRADE</div>
  <div class="decision-reason" id="signalReason">Waiting for live market data and indicator confirmation.</div>
+ <div class="small" style="margin-top:8px">Rapid mode: data refreshes throughout the round. New BUY suggestions can reappear after a 60-second cooldown when a fresh setup qualifies.</div>
 
  <div class="oracle-meter">
   <div class="oracle-head">
@@ -813,6 +814,7 @@ function updateDecision(){
   $("signalReason").textContent="Waiting for enough live market data.";
   $("decisionProbability").textContent="--";
   updateOracleMeter(null);
+  updateSignalQuality();
   return;
  }
 
@@ -822,12 +824,8 @@ function updateDecision(){
  const hasOpening=Number.isFinite(openingReference)&&openingReference>0&&Number.isFinite(openingTimestamp);
  const hasCurrent=Number.isFinite(twapValue)&&twapValue>0;
  const direction=latestModel.direction;
- let action="NO TRADE";
- let reason="";
- let beatText="Waiting for reference";
- let probabilityText="Waiting for current data";
- let confirmations=0;
- let displaySide=null;
+ let action="NO TRADE",reason="",beatText="Waiting for reference";
+ let probabilityText="Waiting for current data",confirmations=0,displaySide=null;
 
  if(hasOpening&&hasCurrent){
   const deltaBps=Math.log(twapValue/openingReference)*10000;
@@ -841,18 +839,14 @@ function updateDecision(){
    roundEnd:activeRound+900000
   });
   if(liveProbability&&liveProbability.valid){
-   const up=liveProbability.probabilityUp;
-   const down=liveProbability.probabilityDown;
+   const up=liveProbability.probabilityUp,down=liveProbability.probabilityDown;
    updateOracleMeter(liveProbability);
-   const side=liveProbability.direction;
-   const confidence=liveProbability.confidence;
+   const side=liveProbability.direction,confidence=liveProbability.confidence;
    confirmations=side==="UP"?latestModel.upConfirmations:latestModel.downConfirmations;
    probabilityText="UP "+(up*100).toFixed(1)+"% / DOWN "+(down*100).toFixed(1)+"%";
+   let state=readSignalState();
 
-   // Remember the dashboard's last BUY suggestion locally. This is not a
-   // connected position or proof that the user actually entered a trade.
-   const state=readSignalState();
-   if(state){
+   if(state&&state.status==="active"){
     displaySide=state.side;
     const heldProbability=state.side==="UP"?up:down;
     const reverseProbability=state.side==="UP"?down:up;
@@ -863,32 +857,46 @@ function updateDecision(){
      (reverseConfirmations>=1||reverseScore>=12);
     const lostEdge=heldProbability<0.55;
     const nearSettlement=remaining<=30000;
-
-    if(state.status==="exited"||clearReversal||lostEdge||nearSettlement){
+    if(clearReversal||lostEdge||nearSettlement){
      state.status="exited";
+     state.exitedAt=now;
+     state.lastSignalAt=now;
+     state.exitReason=clearReversal?"The model now favors the opposite side.":nearSettlement?"This round is close to settlement.":"The estimated chance for this direction weakened below 55%.";
      writeSignalState(state);
      action="CASH OUT "+state.side;
-     reason=state.status==="exited"&&clearReversal
-      ?"The model now favors the opposite side. Exit the earlier suggested direction if you entered it."
-      :nearSettlement
-       ?"This round is close to settlement. Exit the earlier suggested direction if you entered it."
-       :"The estimated chance for the earlier suggested direction has weakened below the 55% exit level. Exit if you entered it.";
+     reason=state.exitReason+" Exit the earlier suggested direction if you entered it. A fresh entry can appear after the cooldown if conditions qualify.";
     }else{
      action="HOLD "+state.side;
-     reason="The model still favors the earlier BUY direction. Continue holding only if you entered that signal; the dashboard does not know whether you bought.";
+     reason="The model still favors the earlier BUY direction. Continue holding only if you entered it; the dashboard does not know whether you bought.";
     }
    }else{
+    const cooldownMs=60000;
+    const lastSignalAt=state&&Number.isFinite(state.lastSignalAt)?state.lastSignalAt:0;
+    const cooldownLeft=Math.max(0,cooldownMs-(now-lastSignalAt));
     const signedScore=latestModel.score*(side==="UP"?1:-1);
-    if(elapsed<180000)reason="Wait until the 3-minute checkpoint before considering a signal.";
-    else if(remaining<=60000)reason="Too close to settlement. No new entry signal.";
-    else if(confidence<probabilityModel.MIN_CONFIDENCE)reason="Estimated chance is below the experimental 64% entry threshold.";
-    else if(latestModel.direction!=="WAIT"&&latestModel.direction!==side&&Math.abs(latestModel.score)>=18)reason="Technical indicators strongly conflict with the probability estimate.";
-    else if(confirmations<1&&signedScore<12)reason="Technical indicators do not provide enough supporting evidence.";
-    else{
+    const canEnter=elapsed>=180000&&remaining>60000&&cooldownLeft===0&&
+     confidence>=probabilityModel.MIN_CONFIDENCE&&
+     !(latestModel.direction!=="WAIT"&&latestModel.direction!==side&&Math.abs(latestModel.score)>=18)&&
+     (confirmations>=1||signedScore>=12);
+    if(canEnter){
      action=side==="UP"?"BUY UP":"BUY DOWN";
      displaySide=side;
-     writeSignalState({side,round:activeRound,status:"active",suggestedAt:now});
-     reason="Entry conditions are met. If you choose to enter this direction on Polymarket, the dashboard will monitor for HOLD or CASH OUT conditions. Experimental signal, not a guarantee.";
+     state={side,round:activeRound,status:"active",suggestedAt:now,lastSignalAt:now};
+     writeSignalState(state);
+     reason="Fresh entry conditions are met. This is a new opportunity in the current 15-minute round. Only enter manually if you choose; the dashboard does not know your position.";
+    }else if(elapsed<180000){
+     reason="Waiting for the 3-minute start window.";
+    }else if(remaining<=60000){
+     reason="Too close to settlement for a new entry.";
+    }else if(cooldownLeft>0){
+     action="NO TRADE";
+     reason="Cooling down after the previous signal. Next fresh entry check in about "+Math.ceil(cooldownLeft/1000)+" seconds.";
+    }else if(confidence<probabilityModel.MIN_CONFIDENCE){
+     reason="No fresh entry: estimated chance is below the experimental 64% threshold.";
+    }else if(latestModel.direction!=="WAIT"&&latestModel.direction!==side&&Math.abs(latestModel.score)>=18){
+     reason="No fresh entry: technical indicators strongly conflict with the settlement estimate.";
+    }else{
+     reason="No fresh entry: technical support is not strong enough yet. The model keeps checking as new data arrives.";
     }
    }
   }else{
@@ -909,7 +917,7 @@ function updateDecision(){
  $("signal").textContent=action;
  $("signal").className="decision-action "+actionColor;
  card.className="decision-card "+(side==="UP"?"buy-up":side==="DOWN"?"buy-down":"wait");
- $("decisionState").textContent=isBuy?"Entry signal":isHold?"Hold signal · if entered":isCashOut?"Exit signal · if entered":"Stand aside";
+ $("decisionState").textContent=isBuy?"Fresh entry signal":isHold?"Hold signal · if entered":isCashOut?"Exit signal · if entered":"Stand aside";
  $("signalReason").textContent=reason;
  $("decisionModel").textContent=direction;
  $("decisionScore").textContent=Math.abs(latestModel.score).toFixed(0)+" technical";
