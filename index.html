@@ -378,7 +378,7 @@ function handleTwapSample(sample){
 
  // Capture the published 60-second TWAP at the beginning
  // of the 15-minute round, not an ordinary exchange spot price.
- if(timestamp>=round&&timestamp<=round+15000){
+ if(timestamp>=round&&timestamp<=round+5000){
   const key="btcTwapOpen_"+round;
   if(!localStorage.getItem(key)){
    saveOpening(round,value,timestamp);
