@@ -221,20 +221,24 @@ function parseTwapMessage(raw, samples, feedMode, onError) {
 
   if (feedMode === "polybolt") {
     if (message.op === "error") {
-      onError("PolyBolt error: " + JSON.stringify(message));
+      const code = String(message.code || "unknown_error");
+      onError("PolyBolt rejected the feed: " + code);
       return;
     }
     if (message.channel !== "price.crypto.twap") return;
+
     const payload = message.payload || {};
     const rows = Array.isArray(payload.data) ? payload.data : [payload];
     for (const row of rows) {
-      if (String(row.symbol || "btcusd").toLowerCase().replace("/", "") !== "btcusd") continue;
+      const symbol = String(row.symbol || payload.symbol || "").toLowerCase();
+      if (symbol !== "btcusd") continue;
+      const windowSeconds = Number(row.window_seconds ?? payload.window_seconds);
+      if (Number.isFinite(windowSeconds) && windowSeconds !== 60) continue;
+
       const timestamp = parseTimestamp(row.timestamp || message.ts);
-      let value = Number(row.value);
-      if (!Number.isFinite(value) && row.full_accuracy_value != null) {
-        value = Number(row.full_accuracy_value);
-        if (value > 1e12) value /= 1e18;
-      }
+      // PolyBolt's full_accuracy_value is already a decimal price. Do not apply
+      // the E18 conversion that was used by the legacy RTDS feed.
+      const value = Number(row.full_accuracy_value ?? row.value);
       if (Number.isFinite(timestamp) && Number.isFinite(value) && value > 0) {
         samples.push({ timestamp, value, source: row.source || payload.source || "chainlink" });
       }
@@ -249,6 +253,7 @@ function parseTwapMessage(raw, samples, feedMode, onError) {
     if (String(row.symbol || "btc/usd").toLowerCase().replace("/", "") !== "btcusd") continue;
     const timestamp = parseTimestamp(row.timestamp || row.ts || message.timestamp);
     let value = Number(row.value);
+    // Legacy RTDS full_accuracy_value uses an E18 fixed-point representation.
     if (!Number.isFinite(value) && row.full_accuracy_value != null) {
       value = Number(row.full_accuracy_value) / 1e18;
     }
@@ -263,50 +268,140 @@ function startTwapCapture(stopAt, serverNow) {
   const apiKey = process.env.POLYMARKET_API_KEY;
   const secret = process.env.POLYMARKET_API_SECRET;
   const passphrase = process.env.POLYMARKET_PASSPHRASE;
-  const feedMode = apiKey && secret && passphrase ? "polybolt" : "legacy-rtds";
+  const hasAnyCredential = Boolean(apiKey || secret || passphrase);
+  const hasAllCredentials = Boolean(apiKey && secret && passphrase);
+  const feedMode = hasAnyCredential ? "polybolt" : "legacy-rtds";
   let lastError = "";
   let socket = null;
   let heartbeat = null;
+  let authenticated = false;
+  let subscribed = false;
+  let firstSampleAt = null;
+  let lastSampleAt = null;
+  let lastSequence = null;
+  let droppedCount = 0;
+  let socketClosed = false;
 
   const done = (async () => {
     try {
+      if (feedMode === "polybolt" && !hasAllCredentials) {
+        throw new Error("PolyBolt credentials are incomplete. Add all three GitHub repository secrets: API key, API secret, and passphrase.");
+      }
       if (typeof WebSocket === "undefined") throw new Error("Node.js WebSocket is unavailable.");
+
       const url = feedMode === "polybolt"
         ? "wss://ws-live-v2.polymarket.com/ws"
         : "wss://ws-live-data.polymarket.com";
       socket = new WebSocket(url);
 
+      let resolveAuth, rejectAuth, resolveSubscription, rejectSubscription, resolveFirstSample, rejectFirstSample;
+      const authAck = new Promise((resolve, reject) => { resolveAuth = resolve; rejectAuth = reject; });
+      const subscriptionAck = new Promise((resolve, reject) => { resolveSubscription = resolve; rejectSubscription = reject; });
+      const firstSample = new Promise((resolve, reject) => { resolveFirstSample = resolve; rejectFirstSample = reject; });
+      // Attach early rejection handlers so socket errors before the relevant await
+      // do not create unhandled promise rejections.
+      authAck.catch(() => {});
+      subscriptionAck.catch(() => {});
+      firstSample.catch(() => {});
+
+      const rejectWaiters = (error) => {
+        rejectAuth(error);
+        rejectSubscription(error);
+        rejectFirstSample(error);
+      };
+      const waitFor = async (promise, ms, label) => {
+        let timer;
+        try {
+          return await Promise.race([
+            promise,
+            new Promise((_, reject) => {
+              timer = setTimeout(() => reject(new Error(label + " timeout after " + ms / 1000 + " seconds.")), ms);
+            }),
+          ]);
+        } finally {
+          clearTimeout(timer);
+        }
+      };
+
       const opened = new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error("TWAP WebSocket open timeout.")), 12000);
+        const timeout = setTimeout(() => reject(new Error("TWAP WebSocket open timeout after 12 seconds.")), 12000);
         socket.addEventListener("open", () => { clearTimeout(timeout); resolve(); }, { once: true });
-        socket.addEventListener("error", () => { clearTimeout(timeout); reject(new Error("TWAP WebSocket connection error.")); }, { once: true });
+        socket.addEventListener("error", () => {
+          clearTimeout(timeout);
+          reject(new Error("TWAP WebSocket connection error."));
+        }, { once: true });
       });
 
       socket.addEventListener("message", (event) => {
+        const raw = typeof event.data === "string"
+          ? event.data
+          : Buffer.isBuffer(event.data) ? event.data.toString("utf8") : String(event.data);
         let message;
-        try { message = JSON.parse(event.data); } catch { return; }
+        try { message = JSON.parse(raw); } catch { return; }
 
-        if (feedMode === "polybolt" && message.op === "authed") {
-          socket.send(JSON.stringify({
-            op: "subscribe",
-            rid: "btc-twap",
-            subscriptions: [{
-              channel: "price.crypto.twap",
-              filter: { symbol: "btcusd", window_seconds: 60 },
-            }],
-          }));
-          return;
+        if (feedMode === "polybolt") {
+          if (message.op === "error") {
+            const code = String(message.code || "unknown_error");
+            const error = new Error("PolyBolt rejected the feed: " + code);
+            lastError = error.message;
+            rejectWaiters(error);
+            return;
+          }
+          if (message.op === "authed") {
+            if (message.rid && message.rid !== "btc-auth") return;
+            authenticated = true;
+            resolveAuth(message);
+            return;
+          }
+          if (message.op === "subscribed") {
+            if (message.rid && message.rid !== "btc-twap") return;
+            if (message.channel && message.channel !== "price.crypto.twap") return;
+            subscribed = true;
+            resolveSubscription(message);
+            return;
+          }
+          if (Number.isFinite(Number(message.seq))) lastSequence = Number(message.seq);
+          if (Number.isFinite(Number(message.dropped))) droppedCount = Math.max(droppedCount, Number(message.dropped));
         }
-        parseTwapMessage(event.data, samples, feedMode, (error) => { lastError = error; });
+
+        const countBefore = samples.length;
+        parseTwapMessage(raw, samples, feedMode, (error) => {
+          lastError = error;
+          rejectWaiters(new Error(error));
+        });
+        if (samples.length > countBefore) {
+          const newest = samples.at(-1);
+          firstSampleAt ??= newest.timestamp;
+          lastSampleAt = newest.timestamp;
+          resolveFirstSample(newest);
+        }
+      });
+
+      socket.addEventListener("close", (event) => {
+        socketClosed = true;
+        if (!lastError) lastError = "TWAP WebSocket closed (code " + event.code + ").";
+        rejectWaiters(new Error(lastError));
       });
 
       await opened;
       if (feedMode === "polybolt") {
+        // PolyBolt requires an authenticated acknowledgement before subscribing.
         socket.send(JSON.stringify({
           op: "auth",
           rid: "btc-auth",
           auth: { apiKey, secret, passphrase },
         }));
+        await waitFor(authAck, 12000, "PolyBolt authentication acknowledgement");
+
+        socket.send(JSON.stringify({
+          op: "subscribe",
+          rid: "btc-twap",
+          subscriptions: [{
+            channel: "price.crypto.twap",
+            filter: { symbol: "btcusd", window_seconds: 60 },
+          }],
+        }));
+        await waitFor(subscriptionAck, 12000, "PolyBolt TWAP subscription acknowledgement");
       } else {
         socket.send(JSON.stringify({
           action: "subscribe",
@@ -321,7 +416,14 @@ function startTwapCapture(stopAt, serverNow) {
         }, 5000);
       }
 
-      while (serverNow() < stopAt) await sleep(250);
+      // Do not call the feed healthy merely because the socket opened. Require
+      // at least one valid BTC/USD 60-second TWAP sample.
+      await waitFor(firstSample, 15000, "First BTC/USD 60-second TWAP sample");
+      console.log("TWAP feed verified: " + feedMode +
+        (feedMode === "polybolt" ? " · authenticated · subscribed" : " · subscribed") +
+        " · first sample received");
+
+      while (serverNow() < stopAt && !socketClosed) await sleep(250);
     } catch (error) {
       lastError = error.message;
       console.log("TWAP feed error: " + lastError);
@@ -331,7 +433,18 @@ function startTwapCapture(stopAt, serverNow) {
     }
 
     samples.sort((a, b) => a.timestamp - b.timestamp);
-    return { samples, feedMode, lastError };
+    return {
+      samples,
+      feedMode,
+      lastError,
+      authenticated,
+      subscribed,
+      firstSampleAt,
+      lastSampleAt,
+      lastSequence,
+      droppedCount,
+      socketClosed,
+    };
   })();
 
   return { samples, feedMode, done };
@@ -546,6 +659,16 @@ async function main() {
     captureMethod: "Pre-boundary Chainlink TWAP capture with six fixed-time, no-lookahead probability snapshots",
     feedMode: completedFeed.feedMode,
     feedError: completedFeed.lastError || null,
+    feedDiagnostics: {
+      authenticated: Boolean(completedFeed.authenticated),
+      subscribed: Boolean(completedFeed.subscribed),
+      sampleCount: completedFeed.samples.length,
+      firstSampleAt: completedFeed.firstSampleAt,
+      lastSampleAt: completedFeed.lastSampleAt,
+      lastSequence: completedFeed.lastSequence,
+      droppedCount: completedFeed.droppedCount || 0,
+      socketClosed: Boolean(completedFeed.socketClosed),
+    },
     updatedAt: new Date(serverNow()).toISOString(),
     openingTwap: opening ? opening.value : null,
     openingTwapTimestamp: opening ? opening.timestamp : null,
