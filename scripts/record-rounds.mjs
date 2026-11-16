@@ -289,7 +289,7 @@ async function main() {
   const offset = await getServerOffset();
   const serverNow = () => Date.now() + offset;
   const initialNow = serverNow();
-  const target = Math.ceil(initialNow / ROUND_MS) * ROUND_MS;
+  const target = Math.floor(initialNow / ROUND_MS) * ROUND_MS;
   const waitMs = target - initialNow;
   const data = await loadData();
   data.rounds ??= [];
@@ -309,13 +309,13 @@ async function main() {
     }
   }
 
-  // Runs are scheduled three minutes before each market boundary.
-  // If the scheduled job starts too late, skip instead of fabricating a boundary value.
-  if (waitMs > 4 * 60 * 1000) {
-    console.log("Missed the next boundary window; previous results were checked. No new prediction recorded.");
+  // Runs are scheduled shortly after each market boundary.
+  // Reconstruct the prediction from Coinbase candles completed by that boundary,
+  // so a delayed GitHub runner does not use later price data or fabricate a signal.
+  if (initialNow - target > 15 * 60 * 1000) {
+    console.log("No valid recent boundary to record; previous results were checked.");
   } else {
     const boundaryTwapPromise = captureTwapAtBoundary(target, serverNow);
-    while (serverNow() < target + 9000) await sleep(200);
 
     const [raw1m, raw5m, raw15m, raw1h] = await Promise.all(GRANULARITIES.map(getCandles));
     const bars1m = completedAsOf(raw1m, 60, target);
@@ -350,7 +350,7 @@ async function main() {
         predictedAt: new Date(roundStart).toISOString(),
         collectedAt: new Date(serverNow()).toISOString(),
         captureDelaySeconds: Math.max(0, Math.round((serverNow() - roundStart) / 1000)),
-        captureMethod: "scheduled snapshot using candles completed by round start",
+        captureMethod: "delayed cloud snapshot reconstructed using candles completed by round start",
         predictedDirection: prediction.signalAction === "BUY UP" ? "UP" : prediction.signalAction === "BUY DOWN" ? "DOWN" : "WAIT",
         modelDirection: prediction.direction,
         signalAction: prediction.signalAction,
