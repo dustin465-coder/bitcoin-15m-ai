@@ -3,287 +3,356 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>BTC 15M AI Trading Lab</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BTC 15-Minute AI Lab</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#0b1020;color:#edf3ff;font:15px Arial,sans-serif}
-main{max-width:1050px;margin:auto;padding:24px 16px}
-h1{font-size:30px;margin-bottom:5px}.muted{color:#91a0b8;font-size:13px}
-.panel{background:#141e32;border:1px solid #293752;border-radius:15px;padding:18px;margin:14px 0}
-.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-.stat{background:#0d1628;padding:13px;border-radius:10px}.stat small{color:#91a0b8}
-.stat strong{display:block;font-size:24px;margin-top:7px}
-.green{color:#35d69b}.red{color:#ff7185}.yellow{color:#f3c66a}
-button{background:#31558d;color:white;border:0;border-radius:9px;padding:13px 16px;font-weight:bold;cursor:pointer;width:100%;margin-top:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#0b1020;color:#edf2ff;font-family:Arial,sans-serif;padding:20px}
+main{max-width:1050px;margin:auto}
+h1{font-size:27px;margin-bottom:5px}
+.sub{color:#93a4c4;margin-bottom:22px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+.card{background:#151e33;border:1px solid #293651;border-radius:13px;padding:18px;margin-bottom:14px}
+.card h2{font-size:15px;color:#9fb0ce;margin:0 0 14px}
+.big{font-size:30px;font-weight:bold}
+.small{font-size:13px;color:#9fb0ce;margin-top:8px}
+.green{color:#42d99a}.red{color:#ff7185}.yellow{color:#ffd36a}
+.signal{font-size:29px;font-weight:bold;margin:10px 0}
+.bar{height:12px;background:#303b53;border-radius:8px;overflow:hidden;margin:8px 0}
+.fill{height:100%;background:#42d99a;width:0%}
+.fill.down{background:#ff7185}
+button{background:#5479f7;color:white;border:0;padding:12px 18px;border-radius:8px;font-weight:bold;cursor:pointer;margin:5px 5px 5px 0}
 button:disabled{opacity:.5}
-.bar{height:12px;background:#293752;border-radius:10px;overflow:hidden;display:flex;margin:14px 0}
-#upbar{background:#35d69b}#downbar{background:#ff7185}
-.row{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid #293752}
-input{width:100%;accent-color:#75aaff}
 table{width:100%;border-collapse:collapse;font-size:13px}
-td,th{text-align:left;padding:9px 5px;border-bottom:1px solid #293752}
-th{color:#91a0b8}
-a{color:#9ec4ff}
-#chart{width:100%;height:190px}
-@media(max-width:650px){.grid{grid-template-columns:1fr}h1{font-size:25px}}
+td,th{text-align:left;padding:9px;border-bottom:1px solid #303b53}
+.muted{color:#93a4c4}
+.status{font-size:12px;color:#42d99a}
+#error{color:#ff7185;white-space:pre-wrap;font-size:13px}
+footer{color:#71819f;font-size:12px;margin:22px 0}
+@media(max-width:500px){body{padding:12px}.big{font-size:25px}}
 </style>
 </head>
 <body>
 <main>
 <h1>₿ Bitcoin 15-Minute AI Lab</h1>
-<p class="muted">BTC direction research · Polymarket monitor · Historical backtesting</p>
+<div class="sub">Live market monitoring · Prediction research · Paper trading</div>
 
-<section class="panel">
-<div class="row"><b>BTC / USD</b><span id="connection" class="yellow">Connecting…</span></div>
-<div style="font-size:38px;font-weight:bold" id="price">Loading…</div>
-<div id="priceChange" class="muted">Waiting for market data</div>
-<canvas id="chart" width="950" height="210"></canvas>
-<div class="row"><span class="muted">Current 15-minute candle closes in</span><b id="countdown">--:--</b></div>
-<div class="row"><span class="muted">Current candle open</span><b id="candleOpen">—</b></div>
-<div class="row"><span class="muted">Current candle movement</span><b id="movement">—</b></div>
-</section>
-
-<section class="panel">
-<h2>AI Direction Prediction</h2>
 <div class="grid">
-<div class="stat"><small>UP score</small><strong class="green" id="upScore">50%</strong></div>
-<div class="stat"><small>DOWN score</small><strong class="red" id="downScore">50%</strong></div>
+ <section class="card">
+  <h2>LIVE BITCOIN PRICE</h2>
+  <div class="big" id="price">Connecting...</div>
+  <div class="small" id="priceStatus">Connecting to Coinbase</div>
+ </section>
+ <section class="card">
+  <h2>15-MINUTE COUNTDOWN</h2>
+  <div class="big" id="countdown">--:--</div>
+  <div class="small" id="candleStatus">Waiting for market data</div>
+ </section>
+ <section class="card">
+  <h2>AI DIRECTION</h2>
+  <div class="signal yellow" id="signal">WAIT</div>
+  <div class="small" id="signalReason">Analyzing completed candles</div>
+ </section>
 </div>
-<div class="bar"><div id="upbar" style="width:50%"></div><div id="downbar" style="width:50%"></div></div>
-<div class="row"><span>Prediction</span><strong id="prediction" class="yellow">WAIT</strong></div>
-<div class="row"><span>Signal strength</span><strong id="strength">—</strong></div>
-<div class="row"><span>RSI (14)</span><strong id="rsi">—</strong></div>
-<div class="row"><span>EMA trend</span><strong id="trend">—</strong></div>
-<div class="row"><span>Momentum</span><strong id="momentum">—</strong></div>
-<p class="muted" id="reason">Waiting for completed candles.</p>
-<div class="row"><span>Minimum signal strength</span><b id="thresholdLabel">60%</b></div>
-<input type="range" min="52" max="80" value="60" id="threshold">
-</section>
 
-<section class="panel">
-<h2>Polymarket BTC 15-minute Market</h2>
-<div class="row"><span>Market</span><b id="marketStatus">Searching…</b></div>
-<div class="row"><span>UP best ask</span><strong class="green" id="upAsk">—</strong></div>
-<div class="row"><span>DOWN best ask</span><strong class="red" id="downAsk">—</strong></div>
-<div class="row"><span>UP best bid</span><b id="upBid">—</b></div>
-<div class="row"><span>DOWN best bid</span><b id="downBid">—</b></div>
-<p class="muted" id="marketNote">Read-only public market data. No wallet connected.</p>
-<a id="marketLink" href="https://polymarket.com" target="_blank">Open Polymarket ↗</a>
-</section>
-
-<section class="panel">
-<h2>Historical Backtest</h2>
-<p class="muted">Tests the indicator against the next completed 15-minute candle. Uses past data only when forming each prediction.</p>
 <div class="grid">
-<div class="stat"><small>Candles tested</small><strong id="tested">—</strong></div>
-<div class="stat"><small>Signals taken</small><strong id="trades">—</strong></div>
-<div class="stat"><small>Signal accuracy</small><strong id="accuracy">—</strong></div>
-<div class="stat"><small>Signal coverage</small><strong id="coverage">—</strong></div>
-<div class="stat"><small>UP accuracy</small><strong id="upAccuracy">—</strong></div>
-<div class="stat"><small>DOWN accuracy</small><strong id="downAccuracy">—</strong></div>
+ <section class="card">
+  <h2>UP SIGNAL SCORE</h2>
+  <div class="big green" id="upScore">--</div>
+  <div class="bar"><div class="fill" id="upBar"></div></div>
+ </section>
+ <section class="card">
+  <h2>DOWN SIGNAL SCORE</h2>
+  <div class="big red" id="downScore">--</div>
+  <div class="bar"><div class="fill down" id="downBar"></div></div>
+ </section>
 </div>
-<div class="row"><span>Always-UP baseline</span><b id="baseline">—</b></div>
-<div class="row"><span>Historical period</span><b id="period">—</b></div>
-<button id="backtest">RUN HISTORICAL BACKTEST</button>
-<p id="backtestStatus" class="muted">Ready to test up to 1,000 candles.</p>
+
+<section class="card">
+ <h2>POLYMARKET 15-MINUTE MARKET</h2>
+ <div id="marketStatus" class="small">Looking for current Bitcoin market...</div>
+ <div class="grid" style="margin-top:12px">
+  <div><div class="small">UP best ask</div><div class="big green" id="polyUp">--</div></div>
+  <div><div class="small">DOWN best ask</div><div class="big red" id="polyDown">--</div></div>
+ </div>
+ <div class="small" id="marketLink"></div>
 </section>
 
-<section class="panel">
-<h2>Paper Prediction Journal</h2>
-<p class="muted">Record a prediction and check it against the next candle when it closes.</p>
-<button id="record">RECORD CURRENT PREDICTION</button>
-<div style="overflow-x:auto">
-<table><thead><tr><th>Time</th><th>Prediction</th><th>Score</th><th>Entry BTC</th><th>Outcome</th></tr></thead>
-<tbody id="journal"><tr><td colspan="5">No predictions yet.</td></tr></tbody></table>
-</div>
+<section class="card">
+ <h2>HISTORICAL BACKTEST</h2>
+ <p class="small">Tests the current indicator rules against available completed Coinbase 15-minute candles. Historical results do not guarantee future performance.</p>
+ <button id="backtestButton">Run Backtest</button>
+ <div id="backtestStatus" class="small">Not run yet</div>
+ <div class="grid" style="margin-top:14px">
+  <div><div class="small">Tested predictions</div><div class="big" id="tested">--</div></div>
+  <div><div class="small">Correct predictions</div><div class="big" id="correct">--</div></div>
+  <div><div class="small">Historical accuracy</div><div class="big" id="accuracy">--</div></div>
+ </div>
 </section>
-<p class="muted">Research prototype only. Scores are heuristic, not calibrated probabilities. No bets are placed. Accuracy does not equal profitability. Polymarket fees, spreads, liquidity, settlement rules and execution timing are not included.</p>
+
+<section class="card">
+ <h2>PAPER TRADING JOURNAL</h2>
+ <p class="small">Record a prediction without placing a real bet. The result is checked against the next completed Coinbase candle.</p>
+ <button id="recordButton">Record Current Prediction</button>
+ <div id="journalStatus" class="small">No predictions recorded yet</div>
+ <div style="overflow-x:auto;margin-top:12px">
+ <table>
+ <thead><tr><th>Time</th><th>Prediction</th><th>Entry price</th><th>Result</th></tr></thead>
+ <tbody id="journal"></tbody>
+ </table>
+ </div>
+</section>
+
+<div id="error"></div>
+<footer>
+Research tool only. Scores are indicator-based signals, not calibrated probabilities or financial advice.
+No real trades are placed. Keep this browser tab open for automatic updates.
+</footer>
 </main>
 
 <script>
-const $=id=>document.getElementById(id);
-let candles=[],signal={direction:"WAIT",up:50,strength:50},journal=[];
-const money=n=>n==null?"—":n.toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:2});
-const percent=n=>(n>=0?"+":"")+n.toFixed(2)+"%";
+const $ = id => document.getElementById(id);
+const money = n => Number(n).toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:2});
+const pct = n => (n*100).toFixed(1)+"%";
+let candles=[];
+let livePrice=null;
+let lastSignal=null;
+let journal=JSON.parse(localStorage.getItem("btcPaperJournal")||"[]");
 
-function ema(a,p){
- if(a.length<p)return null;
- let v=a.slice(0,p).reduce((x,y)=>x+y,0)/p,k=2/(p+1);
- for(let i=p;i<a.length;i++)v=a[i]*k+v*(1-k);
- return v;
+function ema(values,period){
+  const k=2/(period+1);
+  let result=values[0];
+  for(let i=1;i<values.length;i++) result=values[i]*k+result*(1-k);
+  return result;
 }
-function rsi(a,p=14){
- if(a.length<p+1)return null;
- let gain=0,loss=0;
- for(let i=a.length-p;i<a.length;i++){
-  let d=a[i]-a[i-1];if(d>0)gain+=d;else loss-=d;
- }
- if(!loss)return 100;
- return 100-100/(1+(gain/p)/(loss/p));
+
+function rsi(values){
+  if(values.length<15)return 50;
+  let gains=0,losses=0;
+  for(let i=values.length-14;i<values.length;i++){
+    const d=values[i]-values[i-1];
+    if(d>0)gains+=d; else losses-=d;
+  }
+  if(losses===0)return 100;
+  return 100-(100/(1+gains/losses));
 }
-function calculate(a){
- const close=a.map(x=>x.close),e9=ema(close,9),e21=ema(close,21),rv=rsi(close);
- if(!e9||!e21||rv===null)return null;
- const mom=(close.at(-1)-close.at(-4))/close.at(-4)*100;
- const body=(a.at(-1).close-a.at(-1).open)/a.at(-1).open*100;
- let score=0;
- score+=(e9>e21?1:-1)*.28;
- score+=(mom>0?1:-1)*Math.min(.25,Math.abs(mom)*.08);
- score+=(body>0?1:-1)*Math.min(.18,Math.abs(body)*.2);
- score+=(rv<35?.12:rv>65?-.12:rv>50?.06:-.06);
- const up=Math.max(5,Math.min(95,Math.round(50+score*100)));
- return {up,strength:Math.max(up,100-up),rsi:rv,e9,e21,mom};
-}
-function updateSignal(){
- // Only completed candles inform the prediction for the current candle.
- const closed=candles.slice(0,-1),v=calculate(closed);
- if(!v)return;
- const threshold=+$("threshold").value;
- const direction=v.strength>=threshold?(v.up>50?"UP":"DOWN"):"WAIT";
- signal={...v,direction};
- $("upScore").textContent=v.up+"%";
- $("downScore").textContent=(100-v.up)+"%";
- $("upbar").style.width=v.up+"%";$("downbar").style.width=(100-v.up)+"%";
- $("prediction").textContent=direction;
- $("prediction").className=direction==="UP"?"green":direction==="DOWN"?"red":"yellow";
- $("strength").textContent=v.strength+"%";
- $("rsi").textContent=v.rsi.toFixed(1);
- $("trend").textContent=v.e9>v.e21?"Bullish":"Bearish";
- $("momentum").textContent=percent(v.mom);
- $("reason").textContent="Uses completed candles only. EMA trend "+(v.e9>v.e21?"bullish":"bearish")+", RSI "+v.rsi.toFixed(1)+".";
-}
-function draw(){
- const c=$("chart"),x=c.getContext("2d"),a=candles.slice(-70);
- x.clearRect(0,0,c.width,c.height);if(!a.length)return;
- const lo=Math.min(...a.map(v=>v.low)),hi=Math.max(...a.map(v=>v.high));
- x.strokeStyle="#293752";for(let j=1;j<5;j++){x.beginPath();x.moveTo(0,j*42);x.lineTo(c.width,j*42);x.stroke()}
- x.beginPath();a.forEach((v,i)=>{let xx=10+i*(c.width-20)/(a.length-1),yy=c.height-12-(v.close-lo)/(hi-lo||1)*(c.height-25);if(i)x.lineTo(xx,yy);else x.moveTo(xx,yy)});
- x.strokeStyle="#79aaff";x.lineWidth=3;x.stroke();
+
+function analyze(data){
+  if(data.length<25)return null;
+  const closes=data.map(c=>c.close);
+  const fast=ema(closes.slice(-25),9);
+  const slow=ema(closes.slice(-25),21);
+  const strength=rsi(closes);
+  const momentum=closes.at(-1)/closes.at(-4)-1;
+  let up=50,down=50;
+  if(fast>slow)up+=18;else down+=18;
+  if(strength>55)up+=15;
+  else if(strength<45)down+=15;
+  if(momentum>0.001)up+=17;
+  else if(momentum< -0.001)down+=17;
+  const last=data.at(-1);
+  if(last.close>last.open)up+=5;
+  else if(last.close<last.open)down+=5;
+  up=Math.min(95,up);
+  down=Math.min(95,down);
+  const difference=up-down;
+  let direction="WAIT";
+  if(difference>=15)direction="UP";
+  if(difference<=-15)direction="DOWN";
+  return {up,down,direction,fast,slow,strength,momentum};
 }
 
 async function getCandles(){
-  const url = "https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=900";
+  const url="https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=900";
+  const r=await fetch(url,{cache:"no-store"});
+  if(!r.ok)throw Error("Coinbase candle request failed: "+r.status);
+  const data=await r.json();
+  if(!Array.isArray(data)||data.length<30)throw Error("Not enough candle data");
+  return data.map(k=>({
+    time:Number(k[0])*1000,
+    low:Number(k[1]),
+    high:Number(k[2]),
+    open:Number(k[3]),
+    close:Number(k[4]),
+    volume:Number(k[5])
+  })).sort((a,b)=>a.time-b.time);
+}
 
-  const r = await fetch(url);
-  if(!r.ok) throw Error("Coinbase HTTP " + r.status);
-
-  const data = await r.json();
-
-  if(!Array.isArray(data) || data.length < 30){
-    throw Error("Not enough Coinbase candle data");
+async function refreshPrice(){
+  try{
+    const r=await fetch("https://api.exchange.coinbase.com/products/BTC-USD/ticker",{cache:"no-store"});
+    if(!r.ok)throw Error("Ticker request failed");
+    const d=await r.json();
+    livePrice=Number(d.price);
+    $("price").textContent=money(livePrice);
+    $("priceStatus").textContent="LIVE · Updated "+new Date().toLocaleTimeString();
+    $("priceStatus").className="small green";
+  }catch(e){
+    $("priceStatus").textContent="Price feed temporarily unavailable";
+    $("priceStatus").className="small red";
   }
-
-  return data.map(k => ({
-    time: Number(k[0]) * 1000,
-    low: Number(k[1]),
-    high: Number(k[2]),
-    open: Number(k[3]),
-    close: Number(k[4]),
-    volume: Number(k[5])
-  })).sort((a,b) => a.time-b.time);
 }
 
-
-async function refresh(){
- try{
-  const all=await getCandles();candles=all;
-  const c=all.at(-1),p=c.close,prev=all.at(-2).close;
-  $("price").textContent=money(p);
-  $("priceChange").textContent=percent((p-prev)/prev*100)+" from previous candle close";
-  $("priceChange").className=(p>=prev?"green":"red");
-  $("connection").textContent="LIVE · "+new Date().toLocaleTimeString();
-  $("connection").className="green";
-  $("candleOpen").textContent=money(c.open);
-  $("movement").textContent=percent((p-c.open)/c.open*100);
-  let remain=Math.max(0,c.time+900000-Date.now());
-  $("countdown").textContent=String(Math.floor(remain/60000)).padStart(2,"0")+":"+String(Math.floor(remain%60000/1000)).padStart(2,"0");
-  updateSignal();draw();settleJournal();
- }catch(e){
-  $("connection").textContent="DATA ERROR";
-  $("connection").className="red";
-  $("priceChange").textContent=e.message;
- }
+function completedCandles(){
+  const now=Date.now();
+  return candles.filter(c=>c.time+900000<=now);
 }
-$("threshold").oninput=()=>{$("thresholdLabel").textContent=$("threshold").value+"%";updateSignal()};
-$("thresholdLabel").textContent=$("threshold").value+"%";
 
-function show(v,n){$(n).textContent=v==null?"—":(v*100).toFixed(1)+"¢"}
+async function refreshCandles(){
+  try{
+    candles=await getCandles();
+    const done=completedCandles();
+    if(done.length<25)throw Error("Waiting for completed candles");
+    const a=analyze(done);
+    if(!a)throw Error("Not enough data to calculate a signal");
+    lastSignal=a;
+    $("upScore").textContent=Math.round(a.up)+"/100";
+    $("downScore").textContent=Math.round(a.down)+"/100";
+    $("upBar").style.width=a.up+"%";
+    $("downBar").style.width=a.down+"%";
+    $("signal").textContent=a.direction;
+    $("signal").className="signal "+(a.direction==="UP"?"green":a.direction==="DOWN"?"red":"yellow");
+    $("signalReason").textContent="RSI "+a.strength.toFixed(1)+" · EMA trend "+(a.fast>a.slow?"up":"down")+" · Scores are not probabilities";
+    $("candleStatus").textContent=done.length+" completed candles loaded";
+    $("error").textContent="";
+    settleJournal(done);
+  }catch(e){
+    $("error").textContent="Bitcoin candle feed: "+e.message;
+  }
+}
+
+function updateCountdown(){
+  const now=Date.now();
+  const next=(Math.floor(now/900000)+1)*900000;
+  const left=Math.max(0,Math.floor((next-now)/1000));
+  $("countdown").textContent=String(Math.floor(left/60)).padStart(2,"0")+":"+String(left%60).padStart(2,"0");
+}
+
 async function refreshPolymarket(){
- try{
-  const start=Math.floor(Date.now()/900000)*900;
-  const slug="btc-updown-15m-"+start;
-  const r=await fetch("https://gamma-api.polymarket.com/events?slug="+slug);
-  if(!r.ok)throw Error("Market lookup HTTP "+r.status);
-  const ev=await r.json();if(!ev.length)throw Error("Current market not found");
-  const m=ev[0].markets[0];
-  const ids=typeof m.clobTokenIds==="string"?JSON.parse(m.clobTokenIds):m.clobTokenIds;
-  const outcomes=typeof m.outcomes==="string"?JSON.parse(m.outcomes):m.outcomes;
-  const ui=outcomes.findIndex(x=>x.toLowerCase()==="up");
-  const di=outcomes.findIndex(x=>x.toLowerCase()==="down");
-  const [u,d]=await Promise.all([ids[ui],ids[di]].map(id=>fetch("https://clob.polymarket.com/book?token_id="+id).then(r=>{if(!r.ok)throw Error("Order book error");return r.json()})));
-  const best=(b,side)=>{let a=(b[side]||[]).map(x=>+x.price);return a.length?(side==="asks"?Math.min(...a):Math.max(...a)):null};
-  show(best(u,"asks"),"upAsk");show(best(d,"asks"),"downAsk");
-  show(best(u,"bids"),"upBid");show(best(d,"bids"),"downBid");
-  $("marketStatus").textContent="LIVE ORDER BOOK";
-  $("marketStatus").className="green";
-  $("marketLink").href="https://polymarket.com/event/"+slug;
-  $("marketNote").textContent="Read-only public quotes. Best ask is approximate purchase price.";
- }catch(e){$("marketStatus").textContent="Unavailable";$("marketNote").textContent=e.message}
-}
-async function runBacktest(){
- const b=$("backtest");b.disabled=true;b.textContent="Downloading candles…";
- $("backtestStatus").textContent="Running backtest…";
- try{
-  let cs=await getCandles(),now=Date.now();
-  cs=cs.filter(c=>c.time+900000<=now);
-  let tested=0,taken=0,wins=0,upN=0,upW=0,dnN=0,dnW=0,allUp=0;
-  const threshold=+$("threshold").value;
-  for(let i=25;i<cs.length-1;i++){
-   const v=calculate(cs.slice(0,i+1));if(!v)continue;
-   const outcome=cs[i+1].close>cs[i+1].open?"UP":"DOWN";
-   tested++;if(outcome==="UP")allUp++;
-   const dir=v.strength>=threshold?(v.up>50?"UP":"DOWN"):"WAIT";
-   if(dir==="WAIT")continue;
-   taken++;if(dir===outcome)wins++;
-   if(dir==="UP"){upN++;if(dir===outcome)upW++}
-   else{dnN++;if(dir===outcome)dnW++}
+  try{
+    const start=Math.floor(Date.now()/900000)*900;
+    const slug="btc-updown-15m-"+start;
+    const r=await fetch("https://gamma-api.polymarket.com/events?slug="+slug,{cache:"no-store"});
+    if(!r.ok)throw Error("Market lookup failed");
+    const events=await r.json();
+    const event=events[0];
+    if(!event)throw Error("Current market not found yet");
+    const markets=event.markets||[];
+    const market=markets.find(m=>String(m.question||"").toLowerCase().includes("bitcoin"))||markets[0];
+    if(!market)throw Error("Market details unavailable");
+    let outcomes=market.outcomes,ids=market.clobTokenIds;
+    if(typeof outcomes==="string")outcomes=JSON.parse(outcomes);
+    if(typeof ids==="string")ids=JSON.parse(ids);
+    let upPrice=null,downPrice=null;
+    for(let i=0;i<(outcomes||[]).length;i++){
+      const name=String(outcomes[i]).toLowerCase();
+      const token=ids&&ids[i];
+      if(!token)continue;
+      try{
+        const book=await fetch("https://clob.polymarket.com/book?token_id="+token,{cache:"no-store"});
+        const b=await book.json();
+        const asks=(b.asks||[]).map(x=>Number(x.price)).filter(x=>x>0).sort((a,b)=>a-b);
+        if(name==="up")upPrice=asks[0]??null;
+        if(name==="down")downPrice=asks[0]??null;
+      }catch(e){}
+    }
+    if(upPrice!==null)$("polyUp").textContent=pct(upPrice);
+    if(downPrice!==null)$("polyDown").textContent=pct(downPrice);
+    if(upPrice===null&&downPrice===null&&market.outcomePrices){
+      let prices=market.outcomePrices;
+      if(typeof prices==="string")prices=JSON.parse(prices);
+      (outcomes||[]).forEach((o,i)=>{
+        if(String(o).toLowerCase()==="up")upPrice=Number(prices[i]);
+        if(String(o).toLowerCase()==="down")downPrice=Number(prices[i]);
+      });
+      if(upPrice!==null)$("polyUp").textContent=pct(upPrice);
+      if(downPrice!==null)$("polyDown").textContent=pct(downPrice);
+    }
+    $("marketStatus").textContent="Market data checked "+new Date().toLocaleTimeString();
+    $("marketLink").innerHTML='<a style="color:#8caaff" target="_blank" rel="noopener" href="https://polymarket.com/event/'+slug+'">Open current Polymarket market ↗</a>';
+  }catch(e){
+    $("marketStatus").textContent="Market unavailable: "+e.message;
   }
-  const rate=(a,b)=>b?(100*a/b).toFixed(1)+"%":"—";
-  $("tested").textContent=tested;$("trades").textContent=taken;
-  $("accuracy").textContent=rate(wins,taken);
-  $("coverage").textContent=rate(taken,tested);
-  $("upAccuracy").textContent=rate(upW,upN);
-  $("downAccuracy").textContent=rate(dnW,dnN);
-  $("baseline").textContent=rate(allUp,tested)+" UP candles";
-  $("period").textContent=new Date(cs[0].time).toLocaleDateString()+" – "+new Date(cs.at(-1).time).toLocaleDateString();
-  $("backtestStatus").textContent="Completed. Compare accuracy with the baseline. This is not a profitability test.";
- }catch(e){$("backtestStatus").textContent="Backtest failed: "+e.message}
- finally{b.disabled=false;b.textContent="RUN HISTORICAL BACKTEST"}
 }
-$("backtest").onclick=runBacktest;
+
+function runBacktest(){
+  const data=completedCandles();
+  let tested=0,correct=0;
+  for(let i=25;i<data.length-1;i++){
+    const result=analyze(data.slice(0,i+1));
+    if(!result||result.direction==="WAIT")continue;
+    tested++;
+    const actual=data[i+1].close>data[i+1].open?"UP":
+      data[i+1].close<data[i+1].open?"DOWN":"FLAT";
+    if(result.direction===actual)correct++;
+  }
+  $("tested").textContent=tested;
+  $("correct").textContent=correct;
+  $("accuracy").textContent=tested?pct(correct/tested):"N/A";
+  $("backtestStatus").textContent=tested?
+    "Tested "+tested+" historical signals from available Coinbase data.":"Not enough historical data to test yet.";
+}
 
 function renderJournal(){
- $("journal").innerHTML=journal.length?journal.map(x=>`<tr><td>${x.time}</td><td>${x.dir}</td><td>${x.strength}%</td><td>${money(x.price)}</td><td>${x.outcome}</td></tr>`).join(""):'<tr><td colspan="5">No predictions yet.</td></tr>';
+  $("journal").innerHTML=journal.slice().reverse().map(j=>
+    "<tr><td>"+new Date(j.time).toLocaleTimeString()+"</td><td>"+j.direction+
+    "</td><td>"+money(j.price)+"</td><td>"+(j.result||"Pending")+"</td></tr>"
+  ).join("");
+  $("journalStatus").textContent=journal.length+" paper predictions recorded";
 }
-function settleJournal(){
- if(!candles.length)return;
- for(const j of journal){
-  if(j.outcome!=="Pending"){
-   continue;
+
+function recordPrediction(){
+  const done=completedCandles();
+  if(!lastSignal||lastSignal.direction==="WAIT"||!done.length){
+    $("journalStatus").textContent="No strong UP or DOWN signal to record. Try again later.";
+    return;
   }
-  const next=candles.find(c=>c.time===j.target);
-  if(next){j.outcome=next.close>next.open?"UP":"DOWN";j.outcome+=(j.outcome===j.dir?" ✓":" ✗")}
- }
- renderJournal();
+  const current=done.at(-1);
+  if(journal.some(j=>j.time===current.time)){
+    $("journalStatus").textContent="A prediction is already recorded for this candle.";
+    return;
+  }
+  journal.push({
+    time:current.time,
+    target:current.time+900000,
+    direction:lastSignal.direction,
+    price:livePrice||current.close,
+    result:null
+  });
+  localStorage.setItem("btcPaperJournal",JSON.stringify(journal));
+  renderJournal();
 }
-$("record").onclick=()=>{
- if(!candles.length)return;
- const current=candles.at(-1);
- journal.unshift({time:new Date().toLocaleTimeString(),dir:signal.direction,strength:signal.strength||50,price:current.close,target:current.time+900000,outcome:"Pending"});
- renderJournal();
-};
-refresh();refreshPolymarket();
-setInterval(refresh,15000);setInterval(refreshPolymarket,30000);
+
+function settleJournal(data){
+  let changed=false;
+  journal.forEach(j=>{
+    if(j.result)return;
+    const next=data.find(c=>c.time===j.target);
+    if(next){
+      const actual=next.close>next.open?"UP":next.close<next.open?"DOWN":"FLAT";
+      j.result=actual===j.direction?"WIN":"LOSS";
+      changed=true;
+    }
+  });
+  if(changed){
+    localStorage.setItem("btcPaperJournal",JSON.stringify(journal));
+    renderJournal();
+  }
+}
+
+$("backtestButton").addEventListener("click",runBacktest);
+$("recordButton").addEventListener("click",recordPrediction);
+
+renderJournal();
+refreshPrice();
+refreshCandles();
+refreshPolymarket();
+updateCountdown();
+
+setInterval(refreshPrice,5000);
+setInterval(refreshCandles,15000);
+setInterval(refreshPolymarket,15000);
+setInterval(updateCountdown,1000);
 </script>
 </body>
 </html>
