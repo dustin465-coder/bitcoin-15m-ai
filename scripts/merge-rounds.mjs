@@ -8,37 +8,41 @@ try {
   remote = JSON.parse(await fs.readFile("data/rounds.json", "utf8"));
 } catch {}
 
-const byStart = new Map((remote.rounds || []).map((round) => [round.roundStart, round]));
+const byKey = new Map((remote.rounds || []).map((round) => [
+  String(round.roundStart) + "|" + String(round.modelVersion || "legacy"),
+  round,
+]));
 
 for (const round of (local.rounds || [])) {
-  const old = byStart.get(round.roundStart) || {};
+  const key = String(round.roundStart) + "|" + String(round.modelVersion || "legacy");
+  const old = byKey.get(key) || {};
   const merged = { ...old, ...round };
 
   // Never erase an already captured or resolved value with a later null.
-  for (const key of [
+  for (const field of [
     "openingTwap",
     "openingTwapTimestamp",
-    "closingTwap",
-    "closingTwapTimestamp",
+    "signalTwap",
+    "signalTwapTimestamp",
     "actualOutcome",
     "result",
     "resolvedAt",
   ]) {
-    if (round[key] == null && old[key] != null) merged[key] = old[key];
+    if (round[field] == null && old[field] != null) merged[field] = old[field];
   }
-
-  byStart.set(round.roundStart, merged);
+  byKey.set(key, merged);
 }
 
-const rounds = [...byStart.values()]
+const rounds = [...byKey.values()]
   .sort((a, b) => a.roundStart - b.roundStart)
-  .slice(-300);
+  .slice(-600);
 
 const stamps = [remote.updatedAt, local.updatedAt].filter(Boolean).sort();
 const output = {
-  version: 1,
+  version: 2,
+  modelVersion: local.modelVersion || remote.modelVersion || "legacy",
   updatedAt: stamps.at(-1) || new Date().toISOString(),
-  schedule: "GitHub Actions scheduled after each 15-minute boundary; predictions reconstructed as-of boundary",
+  schedule: local.schedule || remote.schedule,
   rounds,
 };
 
