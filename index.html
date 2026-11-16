@@ -88,7 +88,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 <section class="card">
 <h2>POLYMARKET PRICE TO BEAT — CHAINLINK TWAP 60s</h2>
 <div class="small" id="twapStatus">Connecting to Polymarket's Chainlink feed...</div>
-<div class="small yellow" id="feedMigrationNote">The browser is using Polymarket's legacy public RTDS feed for now. The replacement PolyBolt feed requires authenticated CLOB API credentials and must be connected through a secure server before November 30, 2026.</div>
+<div class="small yellow" id="feedMigrationNote">The browser still uses Polymarket's legacy RTDS price stream. Polymarket marks RTDS as legacy; the authenticated PolyBolt replacement requires private CLOB API credentials. The cloud recorder uses PolyBolt when its GitHub secrets are configured and otherwise falls back to RTDS.</div>
 <div class="grid" style="margin-top:16px">
 <div>
 <div class="small">OPENING REFERENCE</div>
@@ -255,7 +255,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 
 <div id="error"></div>
 <footer>
-Research tool only. Indicator scores are not calibrated probabilities. The cloud tracker measures fixed-time paper signals against resolved Polymarket outcomes. No real trades are placed. The browser TWAP connection still uses legacy RTDS; PolyBolt requires CLOB API credentials and a secure server connection before November 30, 2026.
+Research tool only. The Student-t probabilities are experimental and uncalibrated. The cloud tracker compares six fixed-time paper predictions with resolved Polymarket outcomes. No real trades are placed. The browser uses legacy RTDS; the cloud recorder uses authenticated PolyBolt when credentials are configured.
 </footer>
 </main>
 
@@ -379,7 +379,7 @@ function handleTwapSample(sample){
  const round=roundStart(timestamp);
  if(round!==activeRound)return;
  twapSamples.push({timestamp,value});
- twapSamples=twapSamples.filter(s=>s.timestamp>=timestamp-40000).slice(-80);
+ twapSamples=twapSamples.filter(s=>s.timestamp>=timestamp-125000).slice(-250);
  if(timestamp>=twapTimestamp){
   twapTimestamp=timestamp;
   twapValue=value;
