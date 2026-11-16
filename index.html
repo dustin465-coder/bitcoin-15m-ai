@@ -87,6 +87,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 <section class="card">
 <h2>POLYMARKET PRICE TO BEAT — CHAINLINK TWAP 60s</h2>
 <div class="small" id="twapStatus">Connecting to Polymarket's Chainlink feed...</div>
+<div class="small yellow" id="feedMigrationNote">The browser is using Polymarket's legacy public RTDS feed for now. The replacement PolyBolt feed requires authenticated CLOB API credentials and must be connected through a secure server before November 30, 2026.</div>
 <div class="grid" style="margin-top:16px">
 <div>
 <div class="small">OPENING REFERENCE</div>
@@ -215,20 +216,28 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 <div class="small" id="autoStatus">Waiting for the first scheduled cloud collection...</div>
 <div class="grid" style="margin-top:12px">
 <div><div class="small">RESOLVED ROUNDS</div><div class="big" id="autoResolved">0 / 100</div></div>
-<div><div class="small">DIRECTIONAL SIGNALS TESTED</div><div class="big" id="autoTested">0</div></div>
+<div><div class="small">BUY SIGNALS TESTED</div><div class="big" id="autoTested">0</div></div>
 <div><div class="small">CORRECT SIGNALS</div><div class="big" id="autoCorrect">0</div></div>
-<div><div class="small">ACCURACY</div><div class="big" id="autoAccuracy">--</div></div>
+<div><div class="small">OVERALL BUY ACCURACY</div><div class="big" id="autoAccuracy">--</div></div>
+<div><div class="small">UP BUY ACCURACY</div><div class="big" id="autoUpAccuracy">--</div></div>
+<div><div class="small">DOWN BUY ACCURACY</div><div class="big" id="autoDownAccuracy">--</div></div>
+<div><div class="small">NO-TRADE ROUNDS</div><div class="big" id="autoNoTrade">0</div></div>
+<div><div class="small">LAST 50 BUY ACCURACY</div><div class="big" id="autoRecentAccuracy">--</div></div>
 </div>
-<div class="small" style="margin-top:12px">Counts only qualified technical BUY signals (score at least 28 and two of three timeframes aligned). Accuracy is measured against resolved Polymarket outcomes. The live dashboard adds a current Chainlink price-to-beat filter before showing BUY.</div>
+<div class="small" style="margin-top:12px">Model V3 records one snapshot about 100 seconds into each 15-minute round. It applies the same technical, timeframe, Chainlink freshness, price-to-beat and continuation filters as the live BUY decision. Every round is checked against the resolved Polymarket outcome. Resolved rounds include NO TRADE; BUY accuracy counts only directional signals.</div>
 <div style="overflow-x:auto;margin-top:12px">
-<table><thead><tr><th>Round (UTC)</th><th>Paper action</th><th>Outcome</th><th>Result</th><th>Opening TWAP</th></tr></thead>
-<tbody id="autoRows"><tr><td colspan="5">No cloud records yet.</td></tr></tbody></table>
+<table><thead><tr><th>Signal-strength band</th><th>BUY signals</th><th>Wins</th><th>Accuracy</th></tr></thead>
+<tbody id="scoreRows"><tr><td colspan="4">Waiting for V3 results.</td></tr></tbody></table>
+</div>
+<div style="overflow-x:auto;margin-top:12px">
+<table><thead><tr><th>Round (UTC)</th><th>Paper action</th><th>Outcome</th><th>Result</th><th>Price-to-beat move</th><th>Decision reason</th></tr></thead>
+<tbody id="autoRows"><tr><td colspan="6">No V3 cloud records yet.</td></tr></tbody></table>
 </div>
 </section>
 
 <section class="card">
 <h2>PAPER TRADING JOURNAL</h2>
-<div class="small">Records signals without placing real trades. Results use the next Coinbase candle as a proxy.</div>
+<div class="small">Local journal only. Its result is a Coinbase candle proxy; the cloud tracker above is the authoritative Polymarket-settled accuracy record.</div>
 <button id="recordButton">Record Current Signal</button>
 <div id="journalStatus" class="small">No predictions recorded</div>
 <div style="overflow-x:auto">
@@ -241,7 +250,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 
 <div id="error"></div>
 <footer>
-Research tool only. Indicator scores are not calibrated probabilities. Coinbase is used for technical analysis; Chainlink TWAP is displayed separately for settlement tracking. No real trades are placed. Keep this browser tab open. The public Polymarket RTDS price stream is scheduled to retire November 30, 2026.
+Research tool only. Indicator scores are not calibrated probabilities. The cloud tracker measures fixed-time paper signals against resolved Polymarket outcomes. No real trades are placed. The browser TWAP connection still uses legacy RTDS; PolyBolt requires CLOB API credentials and a secure server connection before November 30, 2026.
 </footer>
 </main>
 
@@ -257,6 +266,8 @@ let frames={};
 let livePrice=null;
 let latestModel=null;
 let latestFrames={};
+let latestOneMinuteAtr=0;
+let twapSamples=[];
 let twapSocket=null;
 let twapValue=null;
 let twapTimestamp=0;
@@ -314,6 +325,7 @@ function updateRound(){
  const current=roundStart(nowServer());
  if(current!==activeRound){
   activeRound=current;
+  twapSamples=[];
   loadOpening(activeRound);
  }
 }
@@ -354,12 +366,15 @@ function handleTwapSample(sample){
  }
  if(!Number.isFinite(timestamp)||!Number.isFinite(value)||value<=0)return;
 
+ updateRound();
+ const round=roundStart(timestamp);
+ if(round!==activeRound)return;
+ twapSamples.push({timestamp,value});
+ twapSamples=twapSamples.filter(s=>s.timestamp>=timestamp-40000).slice(-80);
  if(timestamp>=twapTimestamp){
   twapTimestamp=timestamp;
   twapValue=value;
  }
-
- const round=roundStart(timestamp);
 
  // Capture the published 60-second TWAP at the beginning
  // of the 15-minute round, not an ordinary exchange spot price.
@@ -567,6 +582,7 @@ function analyze(data,other){
  const avgVol=data.slice(-21,-1).reduce((s,c)=>s+c.volume,0)/20;
  const volRatio=avgVol?last.volume/avgVol:1;
  const momentum=last.close/closes.at(-4)-1;
+ const momentumThreshold=Math.max(0.0005,Math.min(0.004,(volatility/last.close)*0.30));
  const recent=data.slice(-20);
  const support=Math.min(...recent.map(c=>c.low));
  const resistance=Math.max(...recent.map(c=>c.high));
@@ -583,8 +599,8 @@ function analyze(data,other){
   if(last.close>last.open)score+=8;
   else if(last.close<last.open)score-=8;
  }
- if(momentum>0.001)score+=10;
- else if(momentum< -0.001)score-=10;
+ if(momentum>momentumThreshold)score+=10;
+ else if(momentum< -momentumThreshold)score-=10;
 
  const range=Math.max(1,resistance-support);
  if((last.close-support)/range<0.15&&last.close>last.open)score+=8;
@@ -604,7 +620,13 @@ function analyze(data,other){
  let direction="WAIT";
  if(score>=15)direction="UP";
  if(score<=-15)direction="DOWN";
- return {up,down,direction,score,e9,e21,strength,m,bb,vw,volatility,volRatio,support,resistance,last};
+ return {up,down,direction,score,e9,e21,strength,m,bb,vw,volatility,volRatio,support,resistance,last,momentumThreshold};
+}
+
+function requiredPriceBeatBps(reference,oneMinuteAtr){
+ if(!reference||reference<=0)return 2;
+ const volatilityBps=oneMinuteAtr>0?(oneMinuteAtr/reference)*10000:0;
+ return Math.max(2,Math.min(8,volatilityBps*0.20));
 }
 
 function updateDecision(){
@@ -633,18 +655,24 @@ function updateDecision(){
 
  if(hasOpening&&hasCurrent){
   const deltaBps=(twapValue/openingReference-1)*10000;
-  const lean=Math.abs(deltaBps)<2?"FLAT":deltaBps>0?"UP":"DOWN";
-  beatText=(deltaBps>=0?"+":"")+deltaBps.toFixed(1)+" bps · "+lean;
+  const requiredBps=requiredPriceBeatBps(openingReference,latestOneMinuteAtr);
+  const lean=Math.abs(deltaBps)<requiredBps?"FLAT":deltaBps>0?"UP":"DOWN";
+  const recent=twapSamples.filter(s=>s.timestamp>=twapTimestamp-20000&&s.timestamp<=twapTimestamp);
+  const recentSpan=recent.length>1?recent.at(-1).timestamp-recent[0].timestamp:0;
+  const recentMoveBps=recent.length>1?(recent.at(-1).value/recent[0].value-1)*10000:null;
+  beatText=(deltaBps>=0?"+":"")+deltaBps.toFixed(1)+" bps · "+lean+" · min "+requiredBps.toFixed(1)+" bps";
   if(chainlinkAge>180000)reason="Chainlink price-to-beat data is stale. Waiting for a fresh update.";
   else if(elapsed<60000)reason="Let the first minute of the market settle before considering an entry.";
-  else if(remaining<60000)reason="Too close to settlement. No new paper entry.";
+  else if(remaining<=60000)reason="Too close to settlement. No new paper entry.";
   else if(score<28||direction==="WAIT")reason="Technical agreement is not strong enough yet.";
   else if(available.length<2||confirmations<required)reason="Fewer than two of the 1m, 5m and 1h trends confirm the model direction.";
-  else if(lean==="FLAT")reason="Chainlink is too close to the opening price-to-beat to confirm a side.";
+  else if(Math.abs(deltaBps)<requiredBps)reason="Chainlink has not cleared the volatility-adjusted price-to-beat threshold.";
+  else if(recent.length<2||recentSpan<8000||recentMoveBps===null)reason="Waiting for enough recent Chainlink readings to confirm the move is continuing.";
+  else if(Math.sign(recentMoveBps)!==Math.sign(deltaBps))reason="The latest Chainlink movement is fading or reversing.";
   else if(lean!==direction)reason="Chainlink price-to-beat currently leans "+lean+", which conflicts with the technical model.";
   else {
    action=direction==="UP"?"BUY UP":"BUY DOWN";
-   reason="Technical score, timeframe trend and Chainlink price-to-beat all agree. Paper signal only; no order has been placed.";
+   reason="Technical score, timeframe trend and a volatility-adjusted Chainlink move all agree. Paper signal only; no order has been placed.";
   }
  }else{
   reason="Waiting for this round's Chainlink opening reference and a current TWAP reading.";
@@ -706,6 +734,7 @@ async function refreshAnalysis(){
   const live1=withLiveTimeframe(results[1],livePrice,60,now);
   const live5=withLiveTimeframe(results[2],livePrice,300,now);
   const live60=withLiveTimeframe(results[3],livePrice,3600,now);
+  latestOneMinuteAtr=atr(live1.slice(-30));
   const liveTf={
    "1m":tfDirection(live1),
    "5m":tfDirection(live5),
@@ -791,30 +820,56 @@ async function refreshAutoTracker(){
   const response=await fetch("./data/rounds.json?refresh="+Date.now(),{cache:"no-store"});
   if(!response.ok)throw Error("Cloud data not published yet");
   const data=await response.json();
-  const rounds=Array.isArray(data.rounds)?data.rounds:[];
+  const allRounds=Array.isArray(data.rounds)?data.rounds:[];
+  const rounds=allRounds.filter(r=>r.modelVersion==="v3-volatility-aware");
   const resolved=rounds.filter(r=>r.actualOutcome==="UP"||r.actualOutcome==="DOWN");
   const tested=resolved.filter(r=>r.predictedDirection==="UP"||r.predictedDirection==="DOWN");
   const correct=tested.filter(r=>r.result==="WIN").length;
+  const sideStats=side=>{
+   const rows=tested.filter(r=>r.predictedDirection===side);
+   const wins=rows.filter(r=>r.result==="WIN").length;
+   return rows.length?(100*wins/rows.length).toFixed(1)+"%":"--";
+  };
+  const noTrade=resolved.filter(r=>r.predictedDirection==="WAIT").length;
+  const recent=tested.slice().sort((a,b)=>a.roundStart-b.roundStart).slice(-50);
+  const recentWins=recent.filter(r=>r.result==="WIN").length;
   $("autoResolved").textContent=resolved.length+" / 100";
   $("autoTested").textContent=tested.length;
   $("autoCorrect").textContent=correct;
   $("autoAccuracy").textContent=tested.length?(100*correct/tested.length).toFixed(1)+"%":"--";
+  $("autoUpAccuracy").textContent=sideStats("UP");
+  $("autoDownAccuracy").textContent=sideStats("DOWN");
+  $("autoNoTrade").textContent=noTrade;
+  $("autoRecentAccuracy").textContent=recent.length?(100*recentWins/recent.length).toFixed(1)+"%":"--";
   $("autoStatus").textContent=data.updatedAt
-   ?"Cloud recorder last updated "+new Date(data.updatedAt).toLocaleString()+" · Your Mac can be off"
-   :"Cloud recorder is waiting for its first run";
-  const latest=rounds.slice().sort((a,b)=>b.roundStart-a.roundStart).slice(0,10);
+   ?"V3 cloud recorder last updated "+new Date(data.updatedAt).toLocaleString()+" · fixed-time live-rule snapshot · your Mac can be off"
+   :"V3 cloud recorder is waiting for its first run";
+
+  const bands=[
+   {label:"28–39",min:28,max:40},
+   {label:"40–54",min:40,max:55},
+   {label:"55+",min:55,max:Infinity}
+  ];
+  $("scoreRows").innerHTML=bands.map(b=>{
+   const rows=tested.filter(r=>Math.abs(Number(r.modelScore))>=b.min&&Math.abs(Number(r.modelScore))<b.max);
+   const wins=rows.filter(r=>r.result==="WIN").length;
+   const accuracy=rows.length?(100*wins/rows.length).toFixed(1)+"%":"--";
+   return "<tr><td>"+b.label+"</td><td>"+rows.length+"</td><td>"+wins+"</td><td>"+accuracy+"</td></tr>";
+  }).join("");
+
+  const latest=rounds.slice().sort((a,b)=>b.roundStart-a.roundStart).slice(0,12);
   $("autoRows").innerHTML=latest.length?latest.map(r=>{
-   const opening=r.openingTwap==null?"—":money(r.openingTwap);
+   const move=r.twapDistanceBps==null?"—":(r.twapDistanceBps>=0?"+":"")+Number(r.twapDistanceBps).toFixed(1)+" bps";
    const prediction=r.signalAction||(r.predictedDirection==="UP"?"BUY UP":r.predictedDirection==="DOWN"?"BUY DOWN":"NO TRADE");
    const outcome=r.actualOutcome||"Pending";
-   const result=r.result||"Pending";
-   return "<tr><td>"+new Date(r.roundStart).toLocaleTimeString("en-US",{timeZone:"UTC"})+"</td><td>"+prediction+"</td><td>"+outcome+"</td><td>"+result+"</td><td>"+opening+"</td></tr>";
-  }).join(""):'<tr><td colspan="5">No cloud records yet.</td></tr>';
+   const result=r.result==="NO_SIGNAL"?"NO SIGNAL":r.result||"Pending";
+   const reason=r.signalReason||"Legacy record";
+   return "<tr><td>"+new Date(r.roundStart).toLocaleTimeString("en-US",{timeZone:"UTC"})+"</td><td>"+prediction+"</td><td>"+outcome+"</td><td>"+result+"</td><td>"+move+"</td><td>"+reason+"</td></tr>";
+  }).join(""):'<tr><td colspan="6">No V3 cloud records yet.</td></tr>';
  }catch(e){
-  $("autoStatus").textContent="Cloud recorder is being set up; results will appear after its first run.";
+  $("autoStatus").textContent="Cloud accuracy data is not available yet: "+e.message;
  }
 }
-
 function renderJournal(){
  $("journal").innerHTML=journal.slice().reverse().map(j=>
   "<tr><td>"+new Date(j.time).toLocaleTimeString()+"</td><td>"+j.direction+
