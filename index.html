@@ -143,6 +143,22 @@ footer{font-size:12px;color:#8494b1;line-height:1.6;margin:22px 0}
 </section>
 
 <section class="card">
+<h2>AUTOMATIC CLOUD ACCURACY TRACKER</h2>
+<div class="small" id="autoStatus">Waiting for the first scheduled cloud collection...</div>
+<div class="grid" style="margin-top:12px">
+<div><div class="small">RESOLVED ROUNDS</div><div class="big" id="autoResolved">0 / 100</div></div>
+<div><div class="small">DIRECTIONAL SIGNALS TESTED</div><div class="big" id="autoTested">0</div></div>
+<div><div class="small">CORRECT SIGNALS</div><div class="big" id="autoCorrect">0</div></div>
+<div><div class="small">ACCURACY</div><div class="big" id="autoAccuracy">--</div></div>
+</div>
+<div class="small" style="margin-top:12px">Predictions are computed from Coinbase candles completed by the start of each round. Final results come from the resolved Polymarket market. Missing Chainlink boundary samples are left blank rather than guessed.</div>
+<div style="overflow-x:auto;margin-top:12px">
+<table><thead><tr><th>Round (UTC)</th><th>Prediction</th><th>Outcome</th><th>Result</th><th>Opening TWAP</th></tr></thead>
+<tbody id="autoRows"><tr><td colspan="5">No cloud records yet.</td></tr></tbody></table>
+</div>
+</section>
+
+<section class="card">
 <h2>PAPER TRADING JOURNAL</h2>
 <div class="small">Records signals without placing real trades. Results use the next Coinbase candle as a proxy.</div>
 <button id="recordButton">Record Current Signal</button>
@@ -647,6 +663,35 @@ function runBacktest(){
  $("backtestStatus").textContent=tested?"Coinbase candle proxy only · excludes Polymarket settlement, fees and spreads":"Not enough data";
 }
 
+async function refreshAutoTracker(){
+ try{
+  const response=await fetch("./data/rounds.json?refresh="+Date.now(),{cache:"no-store"});
+  if(!response.ok)throw Error("Cloud data not published yet");
+  const data=await response.json();
+  const rounds=Array.isArray(data.rounds)?data.rounds:[];
+  const resolved=rounds.filter(r=>r.actualOutcome==="UP"||r.actualOutcome==="DOWN");
+  const tested=resolved.filter(r=>r.predictedDirection==="UP"||r.predictedDirection==="DOWN");
+  const correct=tested.filter(r=>r.result==="WIN").length;
+  $("autoResolved").textContent=resolved.length+" / 100";
+  $("autoTested").textContent=tested.length;
+  $("autoCorrect").textContent=correct;
+  $("autoAccuracy").textContent=tested.length?(100*correct/tested.length).toFixed(1)+"%":"--";
+  $("autoStatus").textContent=data.updatedAt
+   ?"Cloud recorder last updated "+new Date(data.updatedAt).toLocaleString()+" · Your Mac can be off"
+   :"Cloud recorder is waiting for its first run";
+  const latest=rounds.slice().sort((a,b)=>b.roundStart-a.roundStart).slice(0,10);
+  $("autoRows").innerHTML=latest.length?latest.map(r=>{
+   const opening=r.openingTwap==null?"—":money(r.openingTwap);
+   const prediction=r.predictedDirection||"—";
+   const outcome=r.actualOutcome||"Pending";
+   const result=r.result||"Pending";
+   return "<tr><td>"+new Date(r.roundStart).toLocaleTimeString("en-US",{timeZone:"UTC"})+"</td><td>"+prediction+"</td><td>"+outcome+"</td><td>"+result+"</td><td>"+opening+"</td></tr>";
+  }).join(""):'<tr><td colspan="5">No cloud records yet.</td></tr>';
+ }catch(e){
+  $("autoStatus").textContent="Cloud recorder is being set up; results will appear after its first run.";
+ }
+}
+
 function renderJournal(){
  $("journal").innerHTML=journal.slice().reverse().map(j=>
   "<tr><td>"+new Date(j.time).toLocaleTimeString()+"</td><td>"+j.direction+
@@ -688,6 +733,8 @@ function settleJournal(data){
 $("backtestButton").addEventListener("click",runBacktest);
 $("recordButton").addEventListener("click",recordPrediction);
 renderJournal();
+refreshAutoTracker();
+setInterval(refreshAutoTracker,60000);
 
 activeRound=roundStart(nowServer());
 loadOpening(activeRound);
