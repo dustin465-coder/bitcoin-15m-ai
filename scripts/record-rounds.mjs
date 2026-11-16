@@ -426,20 +426,6 @@ async function main() {
     ? Promise.resolve({ samples: [], feedMode: "already-recorded" })
     : collectTwapWindow(target + DECISION_OFFSET_MS, serverNow);
 
-  const unresolved = data.rounds
-    .filter((round) => !round.actualOutcome && round.roundStart + ROUND_MS < initialNow - 30000)
-    .slice(-30);
-  for (const round of unresolved) {
-    const outcome = await getResolvedOutcome(round.slug);
-    if (outcome) {
-      round.actualOutcome = outcome;
-      round.result = round.predictedDirection === "WAIT"
-        ? "NO_SIGNAL"
-        : round.predictedDirection === outcome ? "WIN" : "LOSS";
-      round.resolvedAt = new Date(serverNow()).toISOString();
-    }
-  }
-
   if (!alreadyRecorded) {
     console.log("Collecting the Chainlink TWAP feed for " + new Date(target).toISOString());
     while (serverNow() < target + DECISION_OFFSET_MS) await sleep(200);
