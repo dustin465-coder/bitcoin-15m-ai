@@ -45,12 +45,12 @@ jobs:
     concurrency:
       # Each 18.5-minute recorder overlaps the next scheduled round by about 3.5 minutes.
       # A unique group lets adjacent market windows run without queueing or skipping.
-      group: btc-checkpoint-\${{ github.run_id }}
+      group: btc-checkpoint-${{ github.run_id }}
       cancel-in-progress: false
     env:
-      POLYMARKET_API_KEY: \${{ secrets.POLYMARKET_API_KEY }}
-      POLYMARKET_API_SECRET: \${{ secrets.POLYMARKET_API_SECRET }}
-      POLYMARKET_PASSPHRASE: \${{ secrets.POLYMARKET_PASSPHRASE }}
+      POLYMARKET_API_KEY: ${{ secrets.POLYMARKET_API_KEY }}
+      POLYMARKET_API_SECRET: ${{ secrets.POLYMARKET_API_SECRET }}
+      POLYMARKET_PASSPHRASE: ${{ secrets.POLYMARKET_PASSPHRASE }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
