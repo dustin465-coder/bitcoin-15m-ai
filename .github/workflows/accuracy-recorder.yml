@@ -1,14 +1,9 @@
 name: BTC 15-minute accuracy recorder
 
 on:
-  push:
-    paths:
-      - ".github/workflows/accuracy-recorder.yml"
-      - "scripts/record-rounds.mjs"
-      - "scripts/merge-rounds.mjs"
   schedule:
-    # Run three minutes after each market boundary; reconstruct the prediction as-of the boundary.
-    - cron: "3,18,33,48 * * * *"
+    # Start five minutes before each 15-minute market boundary so TWAP can be captured at the open.
+    - cron: "10,25,40,55 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -21,7 +16,11 @@ concurrency:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
+    env:
+      POLYMARKET_API_KEY: \${{ secrets.POLYMARKET_API_KEY }}
+      POLYMARKET_API_SECRET: \${{ secrets.POLYMARKET_API_SECRET }}
+      POLYMARKET_PASSPHRASE: \${{ secrets.POLYMARKET_PASSPHRASE }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -31,7 +30,7 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Capture prediction and settlement data
+      - name: Capture a live-rule prediction and settlement data
         run: node scripts/record-rounds.mjs
 
       - name: Merge and save results for the dashboard
@@ -39,7 +38,7 @@ jobs:
           set -e
           cp data/rounds.json /tmp/collector-rounds.json
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "41898282+users.noreply.github.com"
 
           for attempt in 1 2 3 4 5; do
             git fetch origin main
@@ -50,7 +49,7 @@ jobs:
               echo "No data changes to commit."
               exit 0
             fi
-            git commit -m "Record BTC 15-minute accuracy data"
+            git commit -m "Record BTC 15-minute live-rule accuracy data"
             if git push origin main; then
               exit 0
             fi
