@@ -26,6 +26,9 @@ td,th{text-align:left;padding:9px;border-bottom:1px solid #303d57}
 a{color:#9ab5ff}
 #error{color:#ff8293;white-space:pre-wrap;font-size:13px}
 footer{font-size:12px;color:#8494b1;line-height:1.6;margin:22px 0}
+#tradingview-chart{height:640px;min-height:520px;width:100%;border-radius:10px;overflow:hidden}
+.tradingview-widget-container{height:100%;width:100%}
+.tradingview-widget-container__widget{height:calc(100% - 28px);width:100%}
 </style>
 </head>
 <body>
@@ -74,6 +77,49 @@ footer{font-size:12px;color:#8494b1;line-height:1.6;margin:22px 0}
 </div>
 </div>
 <div class="small" id="twapRound">Waiting for a valid opening reference.</div>
+</section>
+
+<section class="card">
+<h2>TRADINGVIEW CHART — BTC/USD · 15 MINUTES</h2>
+<div class="small">Interactive TradingView chart with preloaded technical indicators. Change the timeframe or add/remove studies using the chart toolbar.</div>
+<div id="tradingview-chart">
+  <div class="tradingview-widget-container">
+    <div class="tradingview-widget-container__widget"></div>
+    <div class="tradingview-widget-copyright"><a href="https://www.tradingview.com/symbols/COINBASE-BTCUSD/" rel="noopener nofollow" target="_blank">BTCUSD chart</a><span> by TradingView</span></div>
+    <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
+    {
+      "autosize": true,
+      "symbol": "COINBASE:BTCUSD",
+      "interval": "15",
+      "timezone": "America/New_York",
+      "theme": "dark",
+      "style": "1",
+      "withdateranges": true,
+      "hide_side_toolbar": false,
+      "allow_symbol_change": true,
+      "save_image": false,
+      "hide_volume": false,
+      "hide_legend": false,
+      "hide_top_toolbar": false,
+      "details": false,
+      "hotlist": false,
+      "calendar": false,
+      "studies": [
+        "MAExp@tv-basicstudies",
+        "RSI@tv-basicstudies",
+        "MACD@tv-basicstudies",
+        "BB@tv-basicstudies",
+        "VWAP@tv-basicstudies",
+        "ATR@tv-basicstudies",
+        "Volume@tv-basicstudies"
+      ],
+      "locale": "en",
+      "support_host": "https://www.tradingview.com"
+    }
+    </script>
+  </div>
+</div>
+<div class="small">Important: TradingView supplies its own chart feed. This chart is for visual analysis and does not change the separate Coinbase/Chainlink prediction calculations or Polymarket settlement data.</div>
 </section>
 
 <section class="card">
