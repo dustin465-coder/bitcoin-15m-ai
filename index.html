@@ -413,8 +413,8 @@ function connectTwap(){
 
   twapSocket.onopen=()=>{
    twapConnected=true;
-   $("twapStatus").textContent="Connected · Waiting for Chainlink BTC/USD TWAP 60s";
-   $("twapStatus").className="small green";
+   $("twapStatus").textContent="Legacy RTDS socket connected · waiting for an actual BTC Chainlink TWAP sample";
+   $("twapStatus").className="small yellow";
    twapSocket.send(JSON.stringify({
     action:"subscribe",
     subscriptions:[{
