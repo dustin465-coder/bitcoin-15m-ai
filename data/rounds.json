@@ -1,6 +1,45 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-16T10:45:49.056Z",
+  "updatedAt": "2026-11-16T10:46:48.698Z",
   "schedule": "GitHub Actions scheduled before each 15-minute boundary",
-  "rounds": []
+  "rounds": [
+    {
+      "roundStart": 1794825900000,
+      "roundEnd": 1794826800000,
+      "slug": "btc-updown-15m-1794825900",
+      "predictedAt": "2026-11-16T10:45:00.000Z",
+      "collectedAt": "2026-11-16T10:46:48.698Z",
+      "captureDelaySeconds": 109,
+      "captureMethod": "delayed cloud snapshot reconstructed using candles completed by round start",
+      "predictedDirection": "WAIT",
+      "modelDirection": "WAIT",
+      "signalAction": "NO TRADE",
+      "timeframeConfirmations": 1,
+      "upScore": 49.83,
+      "downScore": 50.17,
+      "modelScore": -0.33,
+      "indicators": {
+        "emaTrend": "Bearish",
+        "rsi14": 51.23,
+        "macd": "Bullish",
+        "vwap": "Below",
+        "bollinger": "Inside",
+        "atr14": 252.23,
+        "volumeRatio": 0.416,
+        "support": 64055.1,
+        "resistance": 64999.63,
+        "timeframe": {
+          "1m": "UP",
+          "5m": "UP",
+          "1h": "DOWN"
+        }
+      },
+      "openingTwap": null,
+      "openingTwapTimestamp": null,
+      "closingTwap": null,
+      "closingTwapTimestamp": null,
+      "actualOutcome": null,
+      "result": null
+    }
+  ]
 }
