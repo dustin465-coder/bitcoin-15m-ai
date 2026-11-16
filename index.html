@@ -878,7 +878,11 @@ function updateDecision(){
      confidence>=probabilityModel.MIN_CONFIDENCE&&
      !(latestModel.direction!=="WAIT"&&latestModel.direction!==side&&Math.abs(latestModel.score)>=18)&&
      (confirmations>=1||signedScore>=12);
-    if(canEnter){
+    if(state&&state.status==="exited"&&cooldownLeft>0){
+     action="CASH OUT "+state.side;
+     displaySide=state.side;
+     reason=(state.exitReason||"The prior setup has exited.")+" Remain out during the 60-second cooldown; a new BUY can appear if conditions qualify afterward.";
+    }else if(canEnter){
      action=side==="UP"?"BUY UP":"BUY DOWN";
      displaySide=side;
      state={side,round:activeRound,status:"active",suggestedAt:now,lastSignalAt:now};
