@@ -1,6 +1,10 @@
 name: BTC 15-minute accuracy recorder
 
 on:
+  push:
+    paths:
+      - ".github/workflows/accuracy-recorder.yml"
+      - "scripts/record-rounds.mjs"
   schedule:
     # Start three minutes before each 15-minute market boundary.
     - cron: "12,27,42,57 * * * *"
