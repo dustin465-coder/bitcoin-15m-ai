@@ -6,8 +6,8 @@ on:
       - ".github/workflows/accuracy-recorder.yml"
       - "scripts/record-rounds.mjs"
   schedule:
-    # Start three minutes before each 15-minute market boundary.
-    - cron: "12,27,42,57 * * * *"
+    # Run three minutes after each market boundary; reconstruct the prediction as-of the boundary.
+    - cron: "3,18,33,48 * * * *"
   workflow_dispatch:
 
 permissions:
