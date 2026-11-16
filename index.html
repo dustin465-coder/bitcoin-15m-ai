@@ -107,6 +107,20 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
    <span class="red" id="oracleDownText">DOWN --</span>
   </div>
   <div class="oracle-foot">This is the model's experimental estimate, not a proven win probability or order-flow measurement. A meter leaning one way does not automatically mean BUY.</div>
+  <div class="oracle-meter" style="margin-top:14px">
+   <div class="oracle-head">
+    <span class="oracle-title">All-page signal quality · separate from win chance</span>
+    <span class="oracle-confidence" id="qualityLabel">Waiting for data</span>
+   </div>
+   <div class="oracle-head" style="margin-top:10px">
+    <span class="oracle-lean" id="qualityLean">NO READ YET</span>
+    <span class="small" id="qualityScore">-- / 100</span>
+   </div>
+   <div class="oracle-track"><div class="oracle-up" id="qualityUpBar" style="width:50%"></div><div class="oracle-down" id="qualityDownBar" style="width:50%"></div></div>
+   <div class="oracle-foot" id="qualityBreakdown">Combines TWAP position, momentum, timeframe agreement, volume context and Polymarket pricing. Missing data is not counted.</div>
+   <div class="oracle-foot">Experimental agreement score, not a probability of winning. It does not change BUY/HOLD/CASH OUT rules yet.</div>
+  </div>
+
  </div>
 
  <div class="decision-meta">
@@ -319,6 +333,7 @@ let activeRound=0;
 let openingReference=null;
 let openingTimestamp=null;
 let twapConnected=false;
+let marketQuotes=null;
 let journal=JSON.parse(localStorage.getItem("btcLabJournal21")||"[]");
 
 function nowServer(){return Date.now()+serverOffset}
@@ -752,6 +767,45 @@ function updateOracleMeter(probability){
  $("oracleDownBar").style.width=(down*100)+"%";
 }
 
+function updateSignalQuality(){
+ const parts=[];
+ const add=(name,score,weight)=>parts.push({name,score:Math.max(-1,Math.min(1,score)),weight});
+ if(liveProbability&&liveProbability.valid){
+  const p=liveProbability.probabilityUp;
+  add("TWAP position",Math.sign(p-0.5)*Math.min(1,Math.abs(p-0.5)*2),30);
+ }
+ if(latestModel){
+  const a=latestModel;
+  const votes=[a.e9>a.e21?1:-1,a.m>0?1:-1,a.strength>=55?1:a.strength<=45?-1:0,a.last.close>a.vw?1:-1,a.momentum>a.momentumThreshold?1:a.momentum< -a.momentumThreshold?-1:0];
+  add("Momentum",votes.reduce((x,y)=>x+y,0)/votes.length,25);
+ }
+ const tf=latestFrames||{};
+ const values=["1m","5m","15m","1h"].map(k=>tf[k]).filter(v=>v==="UP"||v==="DOWN");
+ if(values.length)add("Timeframes",values.reduce((n,v)=>n+(v==="UP"?1:-1),0)/values.length,20);
+ if(latestModel){
+  const a=latestModel;
+  const volumeScore=a.volRatio>=1.2?(a.last.close>a.last.open?1:a.last.close<a.last.open?-1:0):0;
+  add("Volume context",volumeScore,10);
+ }
+ if(marketQuotes&&Number.isFinite(marketQuotes.up)&&Number.isFinite(marketQuotes.down)){
+  add("Polymarket",Math.max(-1,Math.min(1,(marketQuotes.up-marketQuotes.down)/0.20)),15);
+ }
+ const total=parts.reduce((n,p)=>n+p.weight,0);
+ if(!parts.length||!total){
+  $("qualityLean").textContent="NO READ YET";$("qualityLabel").textContent="Waiting for data";$("qualityScore").textContent="-- / 100";
+  $("qualityUpBar").style.width="50%";$("qualityDownBar").style.width="50%";$("qualityBreakdown").textContent="Waiting for live market inputs.";return;
+ }
+ const score=parts.reduce((n,p)=>n+p.score*p.weight,0)/total;
+ const up=Math.max(0,Math.min(1,0.5+score*0.5)),down=1-up;
+ const side=score>0.08?"UP":score< -0.08?"DOWN":"MIXED";
+ const strength=Math.abs(score)>=0.55?"Strong":Math.abs(score)>=0.28?"Moderate":"Weak";
+ $("qualityLean").textContent=side==="MIXED"?"MIXED SIGNALS":side+" CONFLUENCE";
+ $("qualityLean").className="oracle-lean "+(side==="UP"?"green":side==="DOWN"?"red":"yellow");
+ $("qualityLabel").textContent=strength+" agreement";$("qualityScore").textContent=Math.round(up*100)+" / 100 UP";
+ $("qualityUpBar").style.width=(up*100)+"%";$("qualityDownBar").style.width=(down*100)+"%";
+ $("qualityBreakdown").textContent=parts.map(p=>p.name+": "+(p.score>0?"+":"")+p.score.toFixed(2)).join(" · ")+" · "+parts.length+" input groups";
+}
+
 function updateDecision(){
  const card=$("decisionCard");
  if(!latestModel){
@@ -868,6 +922,7 @@ function updateDecision(){
  $("strength").textContent=liveProbability&&liveProbability.valid
   ?(liveProbability.confidence>=0.64?"Probability threshold met":"Below probability threshold")
   :"Waiting for probability estimate";
+ updateSignalQuality();
 }
 
 function showModel(a){
@@ -969,6 +1024,8 @@ async function refreshPolymarket(){
   }
   if(up!==null)$("polyUp").textContent=pct(up);
   if(down!==null)$("polyDown").textContent=pct(down);
+  marketQuotes={up,down};
+  updateSignalQuality();
   $("marketStatus").textContent="Market checked "+new Date().toLocaleTimeString();
   $("marketLink").innerHTML='<a target="_blank" rel="noopener" href="https://polymarket.com/event/'+slug+'">Open current Polymarket market ↗</a>';
  }catch(e){
