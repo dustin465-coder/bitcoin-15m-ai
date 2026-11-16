@@ -1,0 +1,92 @@
+name: BTC 15-minute checkpoint predictor
+
+on:
+  push:
+    paths:
+      - "scripts/model-core.js"
+      - "scripts/test-model.mjs"
+      - "scripts/record-checkpoints.mjs"
+      - ".github/workflows/checkpoint-recorder.yml"
+  schedule:
+    # Start five minutes before each 15-minute market boundary.
+    - cron: "10,25,40,55 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check JavaScript syntax
+        run: |
+          node --check scripts/model-core.js
+          node --check scripts/test-model.mjs
+          node --check scripts/record-checkpoints.mjs
+          node --check scripts/merge-rounds.mjs
+
+      - name: Test probability calculations
+        run: node scripts/test-model.mjs
+
+  record:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    concurrency:
+      # Each 18.5-minute recorder overlaps the next scheduled round by about 3.5 minutes.
+      # A unique group lets adjacent market windows run without queueing or skipping.
+      group: btc-checkpoint-\${{ github.run_id }}
+      cancel-in-progress: false
+    env:
+      POLYMARKET_API_KEY: \${{ secrets.POLYMARKET_API_KEY }}
+      POLYMARKET_API_SECRET: \${{ secrets.POLYMARKET_API_SECRET }}
+      POLYMARKET_PASSPHRASE: \${{ secrets.POLYMARKET_PASSPHRASE }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        with:
+          node-version: "22"
+
+      - name: Verify the probability model
+        run: node scripts/test-model.mjs
+
+      - name: Record six probability checkpoints and the settlement outcome
+        run: node scripts/record-checkpoints.mjs
+
+      - name: Merge and save checkpoint results
+        run: |
+          set -e
+          cp data/rounds.json /tmp/collector-rounds.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            node scripts/merge-rounds.mjs /tmp/collector-rounds.json
+            git add data/rounds.json
+            if git diff --cached --quiet; then
+              echo "No data changes to commit."
+              exit 0
+            fi
+            git commit -m "Record BTC 15-minute probability checkpoints"
+            if git push origin main; then
+              exit 0
+            fi
+            echo "Push race on attempt $attempt; retrying against latest main."
+            sleep 3
+          done
+          echo "Could not save checkpoint data after five attempts."
+          exit 1
