@@ -370,7 +370,7 @@ function handleTwapSample(sample,format="legacy"){
  if(format==="polybolt"&&sample.window_seconds!=null&&Number(sample.window_seconds)!==60)return;
 
  let timestamp=Number(sample.timestamp||sample.ts||0);
- if(typeof sample.timestamp==="string"&&!/^\\d+(\\.\\d+)?$/.test(sample.timestamp))timestamp=Date.parse(sample.timestamp);
+ if(typeof sample.timestamp==="string"&&!/^\d+(\.\d+)?$/.test(sample.timestamp))timestamp=Date.parse(sample.timestamp);
  if(timestamp>0&&timestamp<1e12)timestamp*=1000;
  // PolyBolt sends full_accuracy_value as a normal decimal string. The old
  // RTDS feed used E18 fixed-point values, so its fallback conversion differs.
