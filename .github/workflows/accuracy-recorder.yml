@@ -33,14 +33,53 @@ jobs:
       - name: Capture prediction and settlement data
         run: node scripts/record-rounds.mjs
 
-      - name: Save results for the dashboard
+      - name: Merge and save results for the dashboard
         run: |
+          set -e
+          cp data/rounds.json /tmp/collector-rounds.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/rounds.json
-          if ! git diff --cached --quiet; then
+
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+
+            node --input-type=module <<'NODE'
+            import fs from "node:fs/promises";
+            const local = JSON.parse(await fs.readFile("/tmp/collector-rounds.json", "utf8"));
+            let remote = { version: 1, rounds: [] };
+            try { remote = JSON.parse(await fs.readFile("data/rounds.json", "utf8")); } catch {}
+            const byStart = new Map((remote.rounds || []).map(round => [round.roundStart, round]));
+            for (const round of (local.rounds || [])) {
+              const old = byStart.get(round.roundStart) || {};
+              const merged = { ...old, ...round };
+              for (const key of ["openingTwap","openingTwapTimestamp","closingTwap","closingTwapTimestamp","actualOutcome","result","resolvedAt"]) {
+                if (round[key] == null && old[key] != null) merged[key] = old[key];
+              }
+              byStart.set(round.roundStart, merged);
+            }
+            const rounds = [...byStart.values()].sort((a,b) => a.roundStart - b.roundStart).slice(-300);
+            const stamps = [remote.updatedAt, local.updatedAt].filter(Boolean).sort();
+            const output = {
+              version: 1,
+              updatedAt: stamps.at(-1) || new Date().toISOString(),
+              schedule: "GitHub Actions scheduled after each 15-minute boundary; predictions reconstructed as-of boundary",
+              rounds
+            };
+            await fs.writeFile("data/rounds.json", JSON.stringify(output, null, 2) + "\\n");
+            NODE
+
+            git add data/rounds.json
+            if git diff --cached --quiet; then
+              echo "No data changes to commit."
+              exit 0
+            fi
             git commit -m "Record BTC 15-minute accuracy data"
-            git push
-          else
-            echo "No data changes to commit."
-          fi
+            if git push origin main; then
+              exit 0
+            fi
+            echo "Push race on attempt $attempt; retrying against latest main."
+            sleep 3
+          done
+          echo "Could not save accuracy data after five attempts."
+          exit 1
