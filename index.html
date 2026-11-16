@@ -161,28 +161,27 @@ function draw(){
  x.strokeStyle="#79aaff";x.lineWidth=3;x.stroke();
 }
 async function getCandles(){
- const urls=[
- "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=15m&limit=1000",
- "https://api.coinbase.com/api/v3/brokerage/market/products/BTC-USD/candles?granularity=FIFTEEN_MINUTE&limit=350"
- ];
- let errors=[];
- for(let url of urls){
-  try{
-   let r=await fetch(url);if(!r.ok)throw Error("HTTP "+r.status);
-   let data=await r.json(),out;
-   if(url.includes("binance")){
-    out=data.map(k=>({time:+k[0],open:+k[1],high:+k[2],low:+k[3],close:+k[4],volume:+k[5]}));
-   }else{
-    let arr=data.candles||data;
-    out=arr.map(k=>({time:+(k.start||k.startTime)*1000,open:+k.open,high:+k.high,low:+k.low,close:+k.close,volume:+k.volume})).sort((a,b)=>a.time-b.time);
-   }
-   if(out.length>30)return out;
-   throw Error("Not enough candles");
-  }catch(e){errors.push(e.message)}
- }
- throw Error(errors.join(" / "));
+  const url = "https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=900";
+
+  const response = await fetch(url);
+  if(!response.ok) throw Error("Coinbase HTTP " + response.status);
+
+  const data = await response.json();
+
+  if(!Array.isArray(data) || data.length < 30){
+    throw Error("Coinbase returned insufficient candle data");
+  }
+
+  return data.map(k => ({
+    time: Number(k[0]) * 1000,
+    low: Number(k[1]),
+    high: Number(k[2]),
+    open: Number(k[3]),
+    close: Number(k[4]),
+    volume: Number(k[5])
+  })).sort((a,b) => a.time - b.time);
 }
-async function refresh(){
+{
  try{
   const all=await getCandles();candles=all;
   const c=all.at(-1),p=c.close,prev=all.at(-2).close;
