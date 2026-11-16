@@ -5,3 +5,8 @@ workers_dev = true
 
 [vars]
 ALLOWED_ORIGIN = "https://dustin465-coder.github.io"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "btc-market-history"
+database_id = "c905e5d4-900c-48f9-ab27-fc58f6a18b18"
