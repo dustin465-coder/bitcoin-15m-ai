@@ -48,6 +48,18 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 .tradingview-widget-container{height:100%;width:100%}
 .tradingview-widget-container__widget{height:calc(100% - 28px);width:100%}
 @media(max-width:620px){body{padding:11px}.card{padding:15px}.top-grid{grid-template-columns:1fr}.decision-card{padding:18px}}
+
+.oracle-meter{margin-top:20px;padding:16px;border-radius:14px;background:rgba(5,12,15,.24);border:1px solid rgba(190,220,220,.12)}
+.oracle-head{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
+.oracle-title{font-size:12px;font-weight:800;letter-spacing:.08em;color:#c5d3d5;text-transform:uppercase}
+.oracle-lean{font-size:18px;font-weight:850}
+.oracle-track{display:flex;height:18px;border-radius:99px;overflow:hidden;background:#33434a;margin:13px 0 8px}
+.oracle-up{background:#45c99b;width:50%;transition:width .35s}
+.oracle-down{background:#e87982;width:50%;transition:width .35s}
+.oracle-labels{display:flex;justify-content:space-between;gap:10px;font-size:13px;font-weight:750}
+.oracle-foot{font-size:12px;color:#9db0b5;line-height:1.5;margin-top:10px}
+.oracle-confidence{display:inline-flex;padding:5px 9px;border-radius:99px;background:#263940;color:#c6d6d8;font-size:11px;font-weight:750}
+
 </style>
 </head>
 <body>
@@ -76,6 +88,27 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
  </div>
  <div class="decision-action yellow" id="signal">NO TRADE</div>
  <div class="decision-reason" id="signalReason">Waiting for live market data and indicator confirmation.</div>
+
+ <div class="oracle-meter">
+  <div class="oracle-head">
+   <span class="oracle-title">BTC 15-minute Oracle · estimated finish</span>
+   <span class="oracle-confidence" id="oracleConfidence">Waiting for data</span>
+  </div>
+  <div class="oracle-head" style="margin-top:10px">
+   <span class="oracle-lean" id="oracleLean">NO READ YET</span>
+   <span class="small" id="oracleSummary">Waiting for opening and live TWAP</span>
+  </div>
+  <div class="oracle-track" aria-label="Estimated UP and DOWN settlement chances">
+   <div class="oracle-up" id="oracleUpBar"></div>
+   <div class="oracle-down" id="oracleDownBar"></div>
+  </div>
+  <div class="oracle-labels">
+   <span class="green" id="oracleUpText">UP --</span>
+   <span class="red" id="oracleDownText">DOWN --</span>
+  </div>
+  <div class="oracle-foot">This is the model's experimental estimate, not a proven win probability or order-flow measurement. A meter leaning one way does not automatically mean BUY.</div>
+ </div>
+
  <div class="decision-meta">
   <div><span class="small">Technical direction</span><strong id="decisionModel">--</strong></div>
   <div><span class="small">Technical score</span><strong id="decisionScore">--</strong></div>
@@ -693,12 +726,39 @@ function writeSignalState(state){
  try{localStorage.setItem("btcSignalState21",JSON.stringify(state));}catch(e){}
 }
 
+function updateOracleMeter(probability){
+ const valid=probability&&probability.valid&&Number.isFinite(probability.probabilityUp);
+ if(!valid){
+  $("oracleLean").textContent="NO READ YET";
+  $("oracleSummary").textContent="Waiting for opening and live TWAP";
+  $("oracleConfidence").textContent="Waiting for data";
+  $("oracleUpText").textContent="UP --";
+  $("oracleDownText").textContent="DOWN --";
+  $("oracleUpBar").style.width="50%";
+  $("oracleDownBar").style.width="50%";
+  return;
+ }
+ const up=Math.max(0,Math.min(1,probability.probabilityUp));
+ const down=1-up;
+ const side=up>=down?"UP":"DOWN";
+ const confidence=Math.max(up,down);
+ $("oracleLean").textContent=side+" LEAN";
+ $("oracleLean").className="oracle-lean "+(side==="UP"?"green":"red");
+ $("oracleSummary").textContent="Estimated chance of finishing "+side;
+ $("oracleConfidence").textContent="Model estimate · "+(confidence*100).toFixed(1)+"%";
+ $("oracleUpText").textContent="UP "+(up*100).toFixed(1)+"%";
+ $("oracleDownText").textContent="DOWN "+(down*100).toFixed(1)+"%";
+ $("oracleUpBar").style.width=(up*100)+"%";
+ $("oracleDownBar").style.width=(down*100)+"%";
+}
+
 function updateDecision(){
  const card=$("decisionCard");
  if(!latestModel){
   $("signal").textContent="NO TRADE";
   $("signalReason").textContent="Waiting for enough live market data.";
   $("decisionProbability").textContent="--";
+  updateOracleMeter(null);
   return;
  }
 
@@ -729,6 +789,7 @@ function updateDecision(){
   if(liveProbability&&liveProbability.valid){
    const up=liveProbability.probabilityUp;
    const down=liveProbability.probabilityDown;
+   updateOracleMeter(liveProbability);
    const side=liveProbability.direction;
    const confidence=liveProbability.confidence;
    confirmations=side==="UP"?latestModel.upConfirmations:latestModel.downConfirmations;
@@ -782,6 +843,7 @@ function updateDecision(){
   }
  }else{
   liveProbability=null;
+  updateOracleMeter(null);
   reason="Waiting for this round's opening Chainlink reference and current TWAP.";
  }
 
