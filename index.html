@@ -842,6 +842,15 @@ async function refreshAutoTracker(){
   $("autoNoTrade").textContent=noTrade;
   $("autoRecentAccuracy").textContent=recent.length?(100*recentWins/recent.length).toFixed(1)+"%":"--";
   const latestV3=rounds.slice().sort((a,b)=>b.roundStart-a.roundStart)[0];
+  // If this browser tab opened after the round began, reuse the exact
+  // opening TWAP captured by the pre-boundary cloud recorder.
+  const currentRoundStart=roundStart(nowServer());
+  const currentRoundRecord=rounds.find(r=>r.roundStart===currentRoundStart);
+  if(!Number.isFinite(openingReference)&&currentRoundRecord&&Number.isFinite(Number(currentRoundRecord.openingTwap))){
+   const savedAt=Number(currentRoundRecord.openingTwapTimestamp)||currentRoundStart;
+   saveOpening(currentRoundStart,Number(currentRoundRecord.openingTwap),savedAt);
+   showTwap();
+  }
   $("autoStatus").textContent=latestV3
    ?"V3 cloud snapshot last recorded "+new Date(latestV3.collectedAt||latestV3.predictedAt).toLocaleString()+" · your Mac can be off"
    :"Waiting for the first V3 cloud snapshot. Older test records are kept separate.";
