@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>BTC AI Lab 2.1</title>
+<title>BTC AI Lab 3.0</title>
 <style>
 *{box-sizing:border-box}
 :root{color-scheme:dark}
@@ -201,7 +201,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 
 <section class="card">
 <h2>HISTORICAL BACKTEST</h2>
-<div class="small">Tests indicator signals against the next Coinbase 15-minute candle. This is a price-direction proxy, not an actual Chainlink-settled Polymarket backtest.</div>
+<div class="small">Legacy technical-only diagnostic using the next Coinbase candle. It does not test the complete V3 BUY rules or official Polymarket settlement. Use the cloud tracker below as the authoritative V3 accuracy test.</div>
 <button id="backtestButton">Run Backtest</button>
 <div id="backtestStatus" class="small">Not run yet</div>
 <div class="grid">
@@ -812,7 +812,7 @@ function runBacktest(){
  $("tested").textContent=tested;
  $("correct").textContent=correct;
  $("accuracy").textContent=tested?pct(correct/tested):"N/A";
- $("backtestStatus").textContent=tested?"Coinbase candle proxy only · excludes Polymarket settlement, fees and spreads":"Not enough data";
+ $("backtestStatus").textContent=tested?"Legacy Coinbase candle proxy only · not comparable to V3 live-rule accuracy":"Not enough data";
 }
 
 async function refreshAutoTracker(){
