@@ -1,0 +1,42 @@
+name: BTC 15-minute accuracy recorder
+
+on:
+  schedule:
+    # Start three minutes before each 15-minute market boundary.
+    - cron: "12,27,42,57 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: btc-15m-accuracy-recorder
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Capture prediction and settlement data
+        run: node scripts/record-rounds.mjs
+
+      - name: Save results for the dashboard
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/rounds.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Record BTC 15-minute accuracy data"
+            git push
+          else
+            echo "No data changes to commit."
+          fi
