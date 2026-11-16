@@ -417,6 +417,15 @@ async function main() {
   const data = await loadData();
   data.rounds ??= [];
 
+  const alreadyRecorded = data.rounds.find((round) =>
+    round.roundStart === target && round.modelVersion === MODEL_VERSION
+  );
+  // Open the reference-price stream before any slower settlement lookups so the
+  // exact market-opening TWAP has the best chance of being captured.
+  const twapPromise = alreadyRecorded
+    ? Promise.resolve({ samples: [], feedMode: "already-recorded" })
+    : collectTwapWindow(target + DECISION_OFFSET_MS, serverNow);
+
   const unresolved = data.rounds
     .filter((round) => !round.actualOutcome && round.roundStart + ROUND_MS < initialNow - 30000)
     .slice(-30);
@@ -431,13 +440,8 @@ async function main() {
     }
   }
 
-  const alreadyRecorded = data.rounds.find((round) =>
-    round.roundStart === target && round.modelVersion === MODEL_VERSION
-  );
-
   if (!alreadyRecorded) {
-    console.log("Connecting to the Chainlink TWAP feed before " + new Date(target).toISOString());
-    const twapPromise = collectTwapWindow(target + DECISION_OFFSET_MS, serverNow);
+    console.log("Collecting the Chainlink TWAP feed for " + new Date(target).toISOString());
     while (serverNow() < target + DECISION_OFFSET_MS) await sleep(200);
 
     const [raw1m, raw5m, raw15m, raw1h] = await Promise.all(GRANULARITIES.map(getCandles));
