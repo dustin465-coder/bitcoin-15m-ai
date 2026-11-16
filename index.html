@@ -262,6 +262,8 @@ Research tool only. The Student-t probabilities are experimental and uncalibrate
 <script src="./scripts/model-core.js"></script>
 <script>
 const probabilityModel=window.BTCProbabilityModel;
+// Set this to the deployed Cloudflare Worker URL ending in /twap. Never put credentials here.
+const POLYBOLT_RELAY_URL="";
 const $=id=>document.getElementById(id);
 const money=n=>Number(n).toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:2});
 const pct=n=>(n*100).toFixed(1)+"%";
@@ -277,6 +279,7 @@ let latestOneMinuteAtr=0;
 let twapSamples=[];
 let liveProbability=null;
 let twapSocket=null;
+let twapReconnectTimer=null;
 let twapValue=null;
 let twapTimestamp=0;
 let activeRound=0;
@@ -360,18 +363,24 @@ function showTwap(){
  updateDecision();
 }
 
-function handleTwapSample(sample){
+function handleTwapSample(sample,format="legacy"){
  if(!sample)return;
- const symbol=String(sample.symbol||"btc/usd").toLowerCase().replace("/","");
+ const symbol=String(sample.symbol||"btcusd").toLowerCase().replace("/","");
  if(symbol!=="btcusd")return;
+ if(format==="polybolt"&&sample.window_seconds!=null&&Number(sample.window_seconds)!==60)return;
 
  let timestamp=Number(sample.timestamp||sample.ts||0);
- if(typeof sample.timestamp==="string"&&!/^\d+(\.\d+)?$/.test(sample.timestamp))timestamp=Date.parse(sample.timestamp);
+ if(typeof sample.timestamp==="string"&&!/^\\d+(\\.\\d+)?$/.test(sample.timestamp))timestamp=Date.parse(sample.timestamp);
  if(timestamp>0&&timestamp<1e12)timestamp*=1000;
- let value=Number(sample.value);
-
+ // PolyBolt sends full_accuracy_value as a normal decimal string. The old
+ // RTDS feed used E18 fixed-point values, so its fallback conversion differs.
+ let value=format==="polybolt"
+  ?Number(sample.full_accuracy_value??sample.value)
+  :Number(sample.value);
  if(!Number.isFinite(value)&&sample.full_accuracy_value){
-  value=Number(sample.full_accuracy_value)/1e18;
+  value=format==="polybolt"
+   ?Number(sample.full_accuracy_value)
+   :Number(sample.full_accuracy_value)/1e18;
  }
  if(!Number.isFinite(timestamp)||!Number.isFinite(value)||value<=0)return;
 
@@ -385,8 +394,6 @@ function handleTwapSample(sample){
   twapValue=value;
  }
 
- // Capture the published 60-second TWAP at the beginning
- // of the 15-minute round, not an ordinary exchange spot price.
  if(timestamp>=round&&timestamp<=round+5000){
   const key="btcTwapOpen_"+round;
   if(!localStorage.getItem(key)){
@@ -407,55 +414,89 @@ function handleTwapSample(sample){
 
 function connectTwap(){
  try{
-  if(twapSocket)twapSocket.close();
-  $("twapStatus").textContent="Connecting to Polymarket Chainlink TWAP stream...";
-  twapSocket=new WebSocket("wss://ws-live-data.polymarket.com");
+  if(twapReconnectTimer){clearTimeout(twapReconnectTimer);twapReconnectTimer=null;}
+  if(twapSocket&&twapSocket.readyState<WebSocket.CLOSING)twapSocket.close();
+
+  const relayUrl=POLYBOLT_RELAY_URL.trim();
+  const usePolyBolt=Boolean(relayUrl);
+  const streamUrl=usePolyBolt?relayUrl:"wss://ws-live-data.polymarket.com";
+  $("twapStatus").textContent=usePolyBolt
+   ?"Connecting to secure PolyBolt TWAP relay..."
+   :"PolyBolt relay not configured · using legacy RTDS temporarily";
+  $("twapStatus").className="small yellow";
+  twapSocket=new WebSocket(streamUrl);
 
   twapSocket.onopen=()=>{
    twapConnected=true;
-   $("twapStatus").textContent="Legacy RTDS socket connected · waiting for an actual BTC Chainlink TWAP sample";
-   $("twapStatus").className="small yellow";
-   twapSocket.send(JSON.stringify({
-    action:"subscribe",
-    subscriptions:[{
-     topic:"crypto_prices_twap_sixty",
-     type:"*",
-     filters:'{"symbol":"btc/usd"}'
-    }]
-   }));
+   if(usePolyBolt){
+    $("twapStatus").textContent="Relay connected · verifying PolyBolt authentication and TWAP subscription...";
+    $("twapStatus").className="small yellow";
+   }else{
+    $("twapStatus").textContent="Legacy RTDS connected · waiting for an actual BTC Chainlink TWAP sample";
+    $("twapStatus").className="small yellow";
+    twapSocket.send(JSON.stringify({
+     action:"subscribe",
+     subscriptions:[{
+      topic:"crypto_prices_twap_sixty",
+      type:"*",
+      filters:'{"symbol":"btc/usd"}'
+     }]
+    }));
+   }
   };
 
   twapSocket.onmessage=(event)=>{
    let msg;
    try{msg=JSON.parse(event.data)}catch(e){return}
-   if(msg.topic!=="crypto_prices_twap_sixty")return;
-   const p=msg.payload||{};
 
-   if(Array.isArray(p.data)){
-    p.data.forEach(handleTwapSample);
+   if(usePolyBolt){
+    if(msg.type==="relay_status"){
+     if(msg.state==="subscribed"){
+      $("twapStatus").textContent="PolyBolt authenticated and subscribed · waiting for first BTC/USD TWAP sample...";
+      $("twapStatus").className="small yellow";
+     }else if(msg.state==="error"){
+      $("twapStatus").textContent="PolyBolt relay error: "+(msg.detail||"feed unavailable");
+      $("twapStatus").className="small red";
+     }
+     return;
+    }
+    if(msg.channel!=="price.crypto.twap")return;
+    const p=msg.payload||{};
+    const rows=Array.isArray(p.data)?p.data:[p];
+    rows.forEach(row=>handleTwapSample({
+     ...row,
+     symbol:row.symbol||p.symbol,
+     source:row.source||p.source,
+     window_seconds:row.window_seconds??p.window_seconds
+    },"polybolt"));
    }else{
-    handleTwapSample(p);
+    if(msg.topic!=="crypto_prices_twap_sixty")return;
+    const p=msg.payload||{};
+    if(Array.isArray(p.data))p.data.forEach(row=>handleTwapSample(row,"legacy"));
+    else handleTwapSample(p,"legacy");
    }
 
    if(twapValue!==null){
-    $("twapStatus").textContent="Live Chainlink TWAP 60s · Last update "+new Date(twapTimestamp).toLocaleTimeString();
+    $("twapStatus").textContent=(usePolyBolt?"Live PolyBolt":"Live Chainlink")+" TWAP 60s · Last update "+new Date(twapTimestamp).toLocaleTimeString();
     $("twapStatus").className="small green";
    }
   };
 
   twapSocket.onerror=()=>{
-   $("twapStatus").textContent="Chainlink stream connection error";
+   $("twapStatus").textContent=usePolyBolt?"PolyBolt relay connection error":"Legacy Chainlink stream connection error";
    $("twapStatus").className="small red";
   };
 
   twapSocket.onclose=()=>{
    twapConnected=false;
-   $("twapStatus").textContent="Stream disconnected · Reconnecting...";
+   $("twapStatus").textContent="TWAP stream disconnected · reconnecting...";
    $("twapStatus").className="small yellow";
-   setTimeout(connectTwap,5000);
+   twapReconnectTimer=setTimeout(connectTwap,5000);
   };
  }catch(e){
   $("twapStatus").textContent="Could not start Chainlink stream: "+e.message;
+  $("twapStatus").className="small red";
+  twapReconnectTimer=setTimeout(connectTwap,5000);
  }
 }
 
