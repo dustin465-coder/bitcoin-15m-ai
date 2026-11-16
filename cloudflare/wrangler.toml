@@ -1,0 +1,7 @@
+name = "btc-polybolt-twap-relay"
+main = "polybolt-relay.js"
+compatibility_date = "2026-11-16"
+workers_dev = true
+
+[vars]
+ALLOWED_ORIGIN = "https://dustin465-coder.github.io"
