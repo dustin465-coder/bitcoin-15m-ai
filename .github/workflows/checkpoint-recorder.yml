@@ -3,6 +3,7 @@ name: BTC 15-minute checkpoint predictor
 on:
   push:
     paths:
+      - "index.html"
       - "scripts/model-core.js"
       - "scripts/test-model.mjs"
       - "scripts/test-index.mjs"
