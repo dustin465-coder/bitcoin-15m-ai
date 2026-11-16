@@ -7,53 +7,82 @@
 <title>BTC AI Lab 2.1</title>
 <style>
 *{box-sizing:border-box}
-body{margin:0;background:#0b1020;color:#edf2ff;font-family:Arial;padding:16px}
-main{max-width:1050px;margin:auto}
-h1{font-size:27px}
-h2{font-size:15px;color:#a9bad7;margin:0 0 14px}
-.card{background:#151f35;border:1px solid #2a3854;border-radius:13px;padding:17px;margin:13px 0}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:12px}
-.big{font-size:27px;font-weight:bold}
+:root{color-scheme:dark}
+body{margin:0;background:#101820;color:#edf3f4;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:18px}
+main{max-width:1120px;margin:auto}
+h1{font-size:clamp(24px,3vw,32px);letter-spacing:-.7px;margin:0 0 6px}
+h2{font-size:14px;color:#b8c8cc;letter-spacing:.04em;text-transform:uppercase;margin:0 0 15px}
+.page-sub{font-size:13px;color:#92a6ad;line-height:1.5;margin-bottom:18px}
+.card{background:#18252d;border:1px solid #2b3b43;border-radius:16px;padding:19px;margin:14px 0;box-shadow:0 8px 24px rgba(0,0,0,.13)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.big{font-size:clamp(22px,2.4vw,29px);font-weight:750;letter-spacing:-.5px}
+.small{font-size:13px;color:#9db0b5;line-height:1.55}
+.green{color:#5bddb0}.red{color:#ff8b8b}.yellow{color:#f4ca75}
+.top-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:12px}
+.metric{background:#18252d;border:1px solid #2b3b43;border-radius:16px;padding:17px}
+.metric-label{font-size:11px;letter-spacing:.09em;color:#9db0b5;text-transform:uppercase;margin-bottom:8px}
+.decision-card{border-radius:18px;padding:23px;margin:14px 0 18px;border:1px solid #3b4b4f;background:linear-gradient(135deg,#1d2d35,#18252d);box-shadow:0 12px 32px rgba(0,0,0,.2)}
+.decision-card.buy-up{border-color:#2e9274;background:linear-gradient(135deg,#15392f,#182a2c)}
+.decision-card.buy-down{border-color:#a34e59;background:linear-gradient(135deg,#3b242a,#29232a)}
+.decision-card.wait{border-color:#65747a}
+.decision-top{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center;color:#aebfc2;font-size:11px;font-weight:750;letter-spacing:.1em;text-transform:uppercase}
+.decision-action{font-size:clamp(35px,6vw,54px);font-weight:850;letter-spacing:-1.8px;line-height:1.05;margin:15px 0 10px}
+.decision-reason{font-size:15px;color:#d4dfe0;line-height:1.5;max-width:850px}
+.decision-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;margin-top:20px}
+.decision-meta>div{padding:11px 12px;border-radius:11px;background:rgba(5,12,15,.2);border:1px solid rgba(190,220,220,.1)}
+.decision-meta strong{display:block;margin-top:5px;font-size:15px;color:#f0f5f4}
+.pill{display:inline-flex;align-items:center;gap:7px;border-radius:999px;padding:6px 10px;background:#23343b;color:#bdccd0;font-size:11px;font-weight:700}
 .signal{font-size:31px;font-weight:bold;margin:8px 0}
-.small{font-size:13px;color:#91a2c0;line-height:1.5}
-.green{color:#43d99b}.red{color:#ff7185}.yellow{color:#ffd36a}
-.bar{height:9px;background:#303d57;border-radius:8px;overflow:hidden;margin-top:8px}
-.fill{height:100%;background:#43d99b;width:0%}
-.fill.down{background:#ff7185}
-button{background:#5479f7;color:white;border:0;border-radius:8px;padding:12px 17px;font-weight:bold;cursor:pointer;margin:5px}
+.bar{height:9px;background:#34454d;border-radius:8px;overflow:hidden;margin-top:8px}
+.fill{height:100%;background:#5bddb0;width:0%}
+.fill.down{background:#ff8b8b}
+button{background:#477f78;color:#fff;border:0;border-radius:9px;padding:11px 16px;font-weight:750;cursor:pointer;margin:5px}
+button:hover{filter:brightness(1.1)}
 table{width:100%;border-collapse:collapse;font-size:13px}
-td,th{text-align:left;padding:9px;border-bottom:1px solid #303d57}
-a{color:#9ab5ff}
-#error{color:#ff8293;white-space:pre-wrap;font-size:13px}
-footer{font-size:12px;color:#8494b1;line-height:1.6;margin:22px 0}
-#tradingview-chart{height:640px;min-height:520px;width:100%;border-radius:10px;overflow:hidden}
+td,th{text-align:left;padding:9px;border-bottom:1px solid #35464d}
+th{color:#b8c8cc;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+a{color:#a9c8ff}
+#error{color:#ff8b8b;white-space:pre-wrap;font-size:13px}
+footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
+#tradingview-chart{height:600px;min-height:480px;width:100%;border-radius:12px;overflow:hidden}
 .tradingview-widget-container{height:100%;width:100%}
 .tradingview-widget-container__widget{height:calc(100% - 28px);width:100%}
+@media(max-width:620px){body{padding:11px}.card{padding:15px}.top-grid{grid-template-columns:1fr}.decision-card{padding:18px}}
 </style>
 </head>
 <body>
 <main>
 
-<h1>₿ BTC AI Lab 2.1</h1>
-<div class="small">Live Bitcoin · Chainlink settlement tracking · Technical analysis · Paper testing</div>
+<h1>Bitcoin 15-minute decision desk</h1>
+<div class="page-sub">A simple live view of the model's paper-trade setup. Detailed indicators and the TradingView chart are below.</div>
 
-<div class="grid">
-<section class="card">
-<h2>LIVE BITCOIN — COINBASE</h2>
-<div class="big" id="price">Connecting...</div>
-<div class="small" id="priceStatus">Connecting</div>
-</section>
-<section class="card">
-<h2>15-MINUTE COUNTDOWN</h2>
-<div class="big" id="countdown">--:--</div>
-<div class="small" id="clockStatus">Synchronizing clock</div>
-</section>
-<section class="card">
-<h2>AI DIRECTION</h2>
-<div class="signal yellow" id="signal">WAIT</div>
-<div class="small" id="signalReason">Analyzing</div>
-</section>
+<div class="top-grid">
+ <section class="metric">
+  <div class="metric-label">Live Bitcoin price · Coinbase</div>
+  <div class="big" id="price">Connecting...</div>
+  <div class="small" id="priceStatus">Connecting</div>
+ </section>
+ <section class="metric">
+  <div class="metric-label">Time left in this market</div>
+  <div class="big" id="countdown">--:--</div>
+  <div class="small" id="clockStatus">Synchronizing clock</div>
+ </section>
 </div>
+
+<section class="decision-card wait" id="decisionCard">
+ <div class="decision-top">
+  <span>Paper-trade signal · no order is placed</span>
+  <span class="pill" id="decisionState">Checking conditions</span>
+ </div>
+ <div class="decision-action yellow" id="signal">NO TRADE</div>
+ <div class="decision-reason" id="signalReason">Waiting for live market data and indicator confirmation.</div>
+ <div class="decision-meta">
+  <div><span class="small">Model direction</span><strong id="decisionModel">--</strong></div>
+  <div><span class="small">Technical score</span><strong id="decisionScore">--</strong></div>
+  <div><span class="small">Timeframe agreement</span><strong id="decisionConfirm">--</strong></div>
+  <div><span class="small">Chainlink price-to-beat</span><strong id="decisionBeat">--</strong></div>
+ </div>
+</section>
 
 <section class="card">
 <h2>POLYMARKET PRICE TO BEAT — CHAINLINK TWAP 60s</h2>
@@ -123,20 +152,13 @@ footer{font-size:12px;color:#8494b1;line-height:1.6;margin:22px 0}
 </section>
 
 <section class="card">
-<h2>TECHNICAL ANALYSIS SCORES — NOT PROBABILITIES</h2>
+<h2>Why the model chose this direction</h2>
 <div class="grid">
-<div>
-<div class="small">UP SCORE</div>
-<div class="big green" id="upScore">--</div>
-<div class="bar"><div class="fill" id="upBar"></div></div>
+ <div><div class="small">Underlying model bias</div><div class="big" id="modelBias">--</div></div>
+ <div><div class="small">Indicator agreement score</div><div class="big" id="modelScore">--</div></div>
+ <div><div class="small">Signal quality</div><div class="big" id="strength">Waiting for indicators</div></div>
 </div>
-<div>
-<div class="small">DOWN SCORE</div>
-<div class="big red" id="downScore">--</div>
-<div class="bar"><div class="fill down" id="downBar"></div></div>
-</div>
-</div>
-<div class="small" id="strength">Waiting for indicators</div>
+<div class="small">The score measures how strongly the rules agree. It is not a probability of winning. BUY signals are paper-only and require multiple filters.</div>
 </section>
 
 <section class="card">
@@ -197,9 +219,9 @@ footer{font-size:12px;color:#8494b1;line-height:1.6;margin:22px 0}
 <div><div class="small">CORRECT SIGNALS</div><div class="big" id="autoCorrect">0</div></div>
 <div><div class="small">ACCURACY</div><div class="big" id="autoAccuracy">--</div></div>
 </div>
-<div class="small" style="margin-top:12px">Predictions are computed from Coinbase candles completed by the start of each round. Final results come from the resolved Polymarket market. Missing Chainlink boundary samples are left blank rather than guessed.</div>
+<div class="small" style="margin-top:12px">Measures the base technical model's directional calls against resolved Polymarket outcomes. The live BUY filter is stricter because it also checks current Chainlink price-to-beat alignment. Missing Chainlink boundary samples are left blank rather than guessed.</div>
 <div style="overflow-x:auto;margin-top:12px">
-<table><thead><tr><th>Round (UTC)</th><th>Prediction</th><th>Outcome</th><th>Result</th><th>Opening TWAP</th></tr></thead>
+<table><thead><tr><th>Round (UTC)</th><th>Paper action</th><th>Outcome</th><th>Result</th><th>Opening TWAP</th></tr></thead>
 <tbody id="autoRows"><tr><td colspan="5">No cloud records yet.</td></tr></tbody></table>
 </div>
 </section>
@@ -234,6 +256,7 @@ let candles=[];
 let frames={};
 let livePrice=null;
 let latestModel=null;
+let latestFrames={};
 let twapSocket=null;
 let twapValue=null;
 let twapTimestamp=0;
@@ -314,6 +337,7 @@ function showTwap(){
   $("twapLean").className="big yellow";
   $("twapRound").textContent="Opening reference unavailable for this round. Keep the dashboard open for the next 15-minute boundary.";
  }
+ updateDecision();
 }
 
 function handleTwapSample(sample){
@@ -321,7 +345,8 @@ function handleTwapSample(sample){
  const symbol=String(sample.symbol||"btc/usd").toLowerCase();
  if(symbol!=="btc/usd")return;
 
- const timestamp=Number(sample.timestamp||sample.ts||0);
+ let timestamp=Number(sample.timestamp||sample.ts||0);
+ if(timestamp>0&&timestamp<1e12)timestamp*=1000;
  let value=Number(sample.value);
 
  if(!Number.isFinite(value)&&sample.full_accuracy_value){
@@ -582,16 +607,66 @@ function analyze(data,other){
  return {up,down,direction,score,e9,e21,strength,m,bb,vw,volatility,volRatio,support,resistance,last};
 }
 
+function updateDecision(){
+ const card=$("decisionCard");
+ if(!latestModel){
+  $("signal").textContent="NO TRADE";
+  $("signalReason").textContent="Waiting for enough live market data.";
+  return;
+ }
+
+ const direction=latestModel.direction;
+ const score=Math.abs(latestModel.score);
+ const available=["1m","5m","1h"].filter(k=>latestFrames[k]==="UP"||latestFrames[k]==="DOWN");
+ const confirmations=available.filter(k=>latestFrames[k]===direction).length;
+ const required=2;
+ let action="NO TRADE";
+ let reason="";
+
+ const now=nowServer();
+ const elapsed=now-activeRound;
+ const remaining=activeRound+900000-now;
+ const chainlinkAge=now-twapTimestamp;
+ const hasOpening=Number.isFinite(openingReference)&&openingReference>0;
+ const hasCurrent=Number.isFinite(twapValue)&&twapValue>0;
+ let beatText="Waiting for reference";
+
+ if(hasOpening&&hasCurrent){
+  const deltaBps=(twapValue/openingReference-1)*10000;
+  const lean=Math.abs(deltaBps)<2?"FLAT":deltaBps>0?"UP":"DOWN";
+  beatText=(deltaBps>=0?"+":"")+deltaBps.toFixed(1)+" bps · "+lean;
+  if(chainlinkAge>180000)reason="Chainlink price-to-beat data is stale. Waiting for a fresh update.";
+  else if(elapsed<60000)reason="Let the first minute of the market settle before considering an entry.";
+  else if(remaining<60000)reason="Too close to settlement. No new paper entry.";
+  else if(score<28||direction==="WAIT")reason="Technical agreement is not strong enough yet.";
+  else if(available.length<2||confirmations<required)reason="Fewer than two of the 1m, 5m and 1h trends confirm the model direction.";
+  else if(lean==="FLAT")reason="Chainlink is too close to the opening price-to-beat to confirm a side.";
+  else if(lean!==direction)reason="Chainlink price-to-beat currently leans "+lean+", which conflicts with the technical model.";
+  else {
+   action=direction==="UP"?"BUY UP":"BUY DOWN";
+   reason="Technical score, timeframe trend and Chainlink price-to-beat all agree. Paper signal only; no order has been placed.";
+  }
+ }else{
+  reason="Waiting for this round's Chainlink opening reference and a current TWAP reading.";
+ }
+
+ $("signal").textContent=action;
+ $("signal").className="decision-action "+(action==="BUY UP"?"green":action==="BUY DOWN"?"red":"yellow");
+ card.className="decision-card "+(action==="BUY UP"?"buy-up":action==="BUY DOWN"?"buy-down":"wait");
+ $("decisionState").textContent=action==="NO TRADE"?"Stand aside":"Paper setup only";
+ $("signalReason").textContent=reason;
+ $("decisionModel").textContent=direction;
+ $("decisionScore").textContent=score.toFixed(0)+" / 100";
+ $("decisionConfirm").textContent=confirmations+" of 3";
+ $("decisionBeat").textContent=beatText;
+ $("modelBias").textContent=direction;
+ $("modelBias").className="big "+(direction==="UP"?"green":direction==="DOWN"?"red":"yellow");
+ $("modelScore").textContent=(latestModel.score>=0?"+":"")+latestModel.score.toFixed(0)+" tilt";
+ $("strength").textContent=score>=40?"Strong alignment":score>=28?"Qualified alignment":"Weak / mixed";
+}
+
 function showModel(a){
  latestModel=a;
- $("upScore").textContent=a.up.toFixed(0)+"/100";
- $("downScore").textContent=a.down.toFixed(0)+"/100";
- $("upBar").style.width=a.up+"%";
- $("downBar").style.width=a.down+"%";
- $("signal").textContent=a.direction;
- $("signal").className="signal "+(a.direction==="UP"?"green":a.direction==="DOWN"?"red":"yellow");
- $("signalReason").textContent="Weighted technical score · not a probability";
- $("strength").textContent="Signal strength: "+(Math.abs(a.score)>=35?"Strong":Math.abs(a.score)>=15?"Moderate":"Weak / WAIT");
  $("emaRead").textContent=a.e9>a.e21?"Bullish":"Bearish";
  $("rsiRead").textContent=a.strength.toFixed(1);
  $("macdRead").textContent=a.m>=0?"Bullish":"Bearish";
@@ -600,6 +675,7 @@ function showModel(a){
  $("atrRead").textContent=money(a.volatility);
  $("volumeRead").textContent=a.volRatio.toFixed(2)+"x";
  $("srRead").textContent=money(a.support)+" / "+money(a.resistance);
+ updateDecision();
 }
 
 async function refreshAnalysis(){
@@ -636,6 +712,7 @@ async function refreshAnalysis(){
    "15m":tfDirection(live15),
    "1h":tfDirection(live60)
   };
+  latestFrames=liveTf;
   $("tf1").textContent=liveTf["1m"];
   $("tf5").textContent=liveTf["5m"];
   $("tf15").textContent=liveTf["15m"];
@@ -746,8 +823,8 @@ function renderJournal(){
  $("journalStatus").textContent=journal.length+" paper predictions recorded";
 }
 function recordPrediction(){
- if(!latestModel||latestModel.direction==="WAIT"||!candles.length){
-  $("journalStatus").textContent="No strong signal. WAIT means no entry.";
+ if(!latestModel||!candles.length||$("signal").textContent==="NO TRADE"){
+  $("journalStatus").textContent="No qualified BUY signal right now. NO TRADE means stay out.";
   return;
  }
  const c=candles.at(-1);
@@ -755,7 +832,8 @@ function recordPrediction(){
   $("journalStatus").textContent="Already recorded for this candle.";
   return;
  }
- journal.push({time:c.time,target:c.time+900000,direction:latestModel.direction,price:livePrice||c.close,result:null});
+ const paperDirection=$("signal").textContent==="BUY UP"?"UP":"DOWN";
+ journal.push({time:c.time,target:c.time+900000,direction:paperDirection,price:livePrice||c.close,result:null});
  localStorage.setItem("btcLabJournal21",JSON.stringify(journal));
  renderJournal();
 }
