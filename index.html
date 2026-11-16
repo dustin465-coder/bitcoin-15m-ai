@@ -348,7 +348,7 @@ function connectTwap(){
  }
 }
 
-async function getCandles(granularity){
+async function getCandles(granularity,includeCurrent=false){
  const url="https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity="+granularity;
  const r=await fetch(url,{cache:"no-store"});
  if(!r.ok)throw Error("Coinbase candle error "+r.status);
@@ -358,7 +358,7 @@ async function getCandles(granularity){
  return data.map(k=>({
   time:Number(k[0])*1000,low:Number(k[1]),high:Number(k[2]),
   open:Number(k[3]),close:Number(k[4]),volume:Number(k[5])
- })).sort((a,b)=>a.time-b.time).filter(c=>c.time+ms<=nowServer());
+ })).sort((a,b)=>a.time-b.time).filter(c=>includeCurrent||c.time+ms<=nowServer());
 }
 
 async function refreshPrice(){
@@ -542,9 +542,15 @@ function showModel(a){
 
 async function refreshAnalysis(){
  try{
-  const results=await Promise.all([getCandles(900),getCandles(60),getCandles(300),getCandles(3600)]);
-  candles=results[0];
-  frames={"1m":results[1],"5m":results[2],"1h":results[3]};
+  const results=await Promise.all([getCandles(900,true),getCandles(60,true),getCandles(300,true),getCandles(3600,true)]);
+  const now=nowServer();
+  // Preserve completed bars for backtesting and settlement checks.
+  candles=results[0].filter(c=>c.time+900000<=now);
+  frames={
+   "1m":results[1].filter(c=>c.time+60000<=now),
+   "5m":results[2].filter(c=>c.time+300000<=now),
+   "1h":results[3].filter(c=>c.time+3600000<=now)
+  };
   const tf={
    "1m":tfDirection(frames["1m"]),
    "5m":tfDirection(frames["5m"]),
@@ -556,11 +562,12 @@ async function refreshAnalysis(){
   $("tf15").textContent=tf["15m"];
   $("tf60").textContent=tf["1h"];
   $("tfStatus").textContent=candles.length+" completed 15-minute candles loaded";
-  const now=nowServer();
-  const live15=withLiveCandle(candles,livePrice,now);
-  const live1=withLiveTimeframe(frames["1m"],livePrice,60,now);
-  const live5=withLiveTimeframe(frames["5m"],livePrice,300,now);
-  const live60=withLiveTimeframe(frames["1h"],livePrice,3600,now);
+  // Use Coinbase's actual in-progress OHLCV bars when available, then update their close with the live ticker.
+  // If the API has not returned the active bar yet, the helper creates a provisional approximation.
+  const live15=withLiveCandle(results[0],livePrice,now);
+  const live1=withLiveTimeframe(results[1],livePrice,60,now);
+  const live5=withLiveTimeframe(results[2],livePrice,300,now);
+  const live60=withLiveTimeframe(results[3],livePrice,3600,now);
   const liveTf={
    "1m":tfDirection(live1),
    "5m":tfDirection(live5),
