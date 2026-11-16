@@ -219,7 +219,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 <div><div class="small">CORRECT SIGNALS</div><div class="big" id="autoCorrect">0</div></div>
 <div><div class="small">ACCURACY</div><div class="big" id="autoAccuracy">--</div></div>
 </div>
-<div class="small" style="margin-top:12px">Measures the base technical model's directional calls against resolved Polymarket outcomes. The live BUY filter is stricter because it also checks current Chainlink price-to-beat alignment. Missing Chainlink boundary samples are left blank rather than guessed.</div>
+<div class="small" style="margin-top:12px">Counts only qualified technical BUY signals (score at least 28 and two of three timeframes aligned). Accuracy is measured against resolved Polymarket outcomes. The live dashboard adds a current Chainlink price-to-beat filter before showing BUY.</div>
 <div style="overflow-x:auto;margin-top:12px">
 <table><thead><tr><th>Round (UTC)</th><th>Paper action</th><th>Outcome</th><th>Result</th><th>Opening TWAP</th></tr></thead>
 <tbody id="autoRows"><tr><td colspan="5">No cloud records yet.</td></tr></tbody></table>
@@ -805,7 +805,7 @@ async function refreshAutoTracker(){
   const latest=rounds.slice().sort((a,b)=>b.roundStart-a.roundStart).slice(0,10);
   $("autoRows").innerHTML=latest.length?latest.map(r=>{
    const opening=r.openingTwap==null?"—":money(r.openingTwap);
-   const prediction=r.predictedDirection||"—";
+   const prediction=r.signalAction||(r.predictedDirection==="UP"?"BUY UP":r.predictedDirection==="DOWN"?"BUY DOWN":"NO TRADE");
    const outcome=r.actualOutcome||"Pending";
    const result=r.result||"Pending";
    return "<tr><td>"+new Date(r.roundStart).toLocaleTimeString("en-US",{timeZone:"UTC"})+"</td><td>"+prediction+"</td><td>"+outcome+"</td><td>"+result+"</td><td>"+opening+"</td></tr>";
