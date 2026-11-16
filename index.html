@@ -912,9 +912,11 @@ async function refreshAutoTracker(){
   $("v4Brier").textContent=brier===null?"--":brier.toFixed(3);
 
   const latestRound=rounds.slice().sort((a,b)=>b.roundStart-a.roundStart)[0];
+  const legacyCount=allRounds.filter(r=>r.modelVersion!=="v4-student-t-checkpoints").length;
+  const fileUpdated=data.updatedAt?new Date(data.updatedAt).toLocaleString():"unknown";
   $("v4Status").textContent=latestRound
-   ?"V4 last saved "+new Date(latestRound.updatedAt||latestRound.checkpoints?.at(-1)?.predictedAt||latestRound.roundStart).toLocaleString()+" · "+(latestRound.feedMode||"TWAP feed") +" · six time checkpoints per round"
-   :"Waiting for the first V4 probability checkpoints. Older model records stay separate.";
+   ?"V4 last saved "+new Date(latestRound.updatedAt||latestRound.checkpoints?.at(-1)?.predictedAt||latestRound.roundStart).toLocaleString()+" · "+(latestRound.feedMode||"TWAP feed")+" · six checkpoints per round"
+   :"NO V4 DATA YET · "+legacyCount+" older/legacy record(s) are present but excluded from V4 accuracy · data file last updated "+fileUpdated+". Check the scheduled checkpoint recorder in GitHub Actions.";
 
   const order=["m3","m5","m8","m10","m12","m13_5"];
   const labels={m3:"3 min",m5:"5 min",m8:"8 min",m10:"10 min",m12:"12 min",m13_5:"13.5 min"};
