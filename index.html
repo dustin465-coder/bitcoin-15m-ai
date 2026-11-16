@@ -394,11 +394,12 @@ function handleTwapSample(sample,format="legacy"){
   twapValue=value;
  }
 
- if(timestamp>=round&&timestamp<=round+5000){
-  const key="btcTwapOpen_"+round;
-  if(!localStorage.getItem(key)){
-   saveOpening(round,value,timestamp);
-  }
+ // Capture the opening from the first valid live TWAP sample in the
+ // opening window. Allow 30 seconds for feed delivery jitter instead of
+ // the old 5-second window; never replace a saved opening or invent one.
+ const openingKey="btcTwapOpen_"+round;
+ if(timestamp>=round&&timestamp<=round+30000&&!localStorage.getItem(openingKey)){
+  saveOpening(round,value,timestamp);
  }
 
  updateRound();
