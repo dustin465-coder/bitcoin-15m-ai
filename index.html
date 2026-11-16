@@ -81,6 +81,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
   <div><span class="small">Technical score</span><strong id="decisionScore">--</strong></div>
   <div><span class="small">Timeframe agreement</span><strong id="decisionConfirm">--</strong></div>
   <div><span class="small">Chainlink price-to-beat</span><strong id="decisionBeat">--</strong></div>
+  <div><span class="small">Experimental settlement chance</span><strong id="decisionProbability">--</strong></div>
  </div>
 </section>
 
@@ -212,26 +213,30 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 </section>
 
 <section class="card">
-<h2>AUTOMATIC CLOUD ACCURACY TRACKER</h2>
-<div class="small" id="autoStatus">Waiting for the first scheduled cloud collection...</div>
+<h2>V4 CHECKPOINT ACCURACY TRACKER</h2>
+<div class="small" id="v4Status">Waiting for the first six-checkpoint cloud collection...</div>
 <div class="grid" style="margin-top:12px">
-<div><div class="small">RESOLVED ROUNDS</div><div class="big" id="autoResolved">0 / 100</div></div>
-<div><div class="small">BUY SIGNALS TESTED</div><div class="big" id="autoTested">0</div></div>
-<div><div class="small">CORRECT SIGNALS</div><div class="big" id="autoCorrect">0</div></div>
-<div><div class="small">OVERALL BUY ACCURACY</div><div class="big" id="autoAccuracy">--</div></div>
-<div><div class="small">UP BUY ACCURACY</div><div class="big" id="autoUpAccuracy">--</div></div>
-<div><div class="small">DOWN BUY ACCURACY</div><div class="big" id="autoDownAccuracy">--</div></div>
-<div><div class="small">NO-TRADE ROUNDS</div><div class="big" id="autoNoTrade">0</div></div>
-<div><div class="small">LAST 50 BUY ACCURACY</div><div class="big" id="autoRecentAccuracy">--</div></div>
+<div><div class="small">RESOLVED ROUNDS</div><div class="big" id="v4Rounds">0 / 100</div></div>
+<div><div class="small">CHECKPOINTS RECORDED</div><div class="big" id="v4Checkpoints">0</div></div>
+<div><div class="small">BUY SIGNALS TESTED</div><div class="big" id="v4Buys">0</div></div>
+<div><div class="small">BUY ACCURACY</div><div class="big" id="v4Accuracy">--</div></div>
+<div><div class="small">UP BUY ACCURACY</div><div class="big" id="v4UpAccuracy">--</div></div>
+<div><div class="small">DOWN BUY ACCURACY</div><div class="big" id="v4DownAccuracy">--</div></div>
+<div><div class="small">NO-TRADE CHECKPOINTS</div><div class="big" id="v4NoTrade">0</div></div>
+<div><div class="small">BRIER SCORE · LOWER IS BETTER</div><div class="big" id="v4Brier">--</div></div>
 </div>
-<div class="small" style="margin-top:12px">Model V3 records one snapshot about 100 seconds into each 15-minute round. It applies the same technical, timeframe, Chainlink freshness, price-to-beat and continuation filters as the live BUY decision. Every round is checked against the resolved Polymarket outcome. Resolved rounds include NO TRADE; BUY accuracy counts only directional signals.</div>
+<div class="small" style="margin-top:12px">Each round is tested at 3, 5, 8, 10, 12 and 13.5 minutes. The model estimates the chance of finishing above the Chainlink opening TWAP using recent volatility, short-term TWAP drift and time remaining. Estimates are experimental and uncalibrated; repeated checkpoints within one round are not independent trades.</div>
 <div style="overflow-x:auto;margin-top:12px">
-<table><thead><tr><th>Signal-strength band</th><th>BUY signals</th><th>Wins</th><th>Accuracy</th></tr></thead>
-<tbody id="scoreRows"><tr><td colspan="4">Waiting for V3 results.</td></tr></tbody></table>
+<table><thead><tr><th>Checkpoint</th><th>Resolved samples</th><th>BUYs</th><th>Wins</th><th>BUY accuracy</th><th>Brier score</th></tr></thead>
+<tbody id="checkpointRows"><tr><td colspan="6">Waiting for V4 results.</td></tr></tbody></table>
 </div>
 <div style="overflow-x:auto;margin-top:12px">
-<table><thead><tr><th>Round (UTC)</th><th>Paper action</th><th>Outcome</th><th>Result</th><th>Price-to-beat move</th><th>Decision reason</th></tr></thead>
-<tbody id="autoRows"><tr><td colspan="6">No V3 cloud records yet.</td></tr></tbody></table>
+<table><thead><tr><th>Estimated chance band</th><th>Snapshots</th><th>Average estimate</th><th>Observed side accuracy</th></tr></thead>
+<tbody id="calibrationRows"><tr><td colspan="4">Waiting for resolved probability estimates.</td></tr></tbody></table>
+</div>
+<div style="overflow-x:auto;margin-top:12px">
+<table><thead><tr><th>Round (UTC)</th><th>Checkpoint</th><th>Paper action</th><th>Estimate</th><th>Outcome</th><th>Result</th><th>Reason</th></tr></thead>
+<tbody id="latestCheckpointRows"><tr><td colspan="7">No V4 checkpoint results yet.</td></tr></tbody></table>
 </div>
 </section>
 
@@ -254,7 +259,9 @@ Research tool only. Indicator scores are not calibrated probabilities. The cloud
 </footer>
 </main>
 
+<script src="./scripts/model-core.js"></script>
 <script>
+const probabilityModel=window.BTCProbabilityModel;
 const $=id=>document.getElementById(id);
 const money=n=>Number(n).toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:2});
 const pct=n=>(n*100).toFixed(1)+"%";
@@ -268,6 +275,7 @@ let latestModel=null;
 let latestFrames={};
 let latestOneMinuteAtr=0;
 let twapSamples=[];
+let liveProbability=null;
 let twapSocket=null;
 let twapValue=null;
 let twapTimestamp=0;
@@ -354,10 +362,11 @@ function showTwap(){
 
 function handleTwapSample(sample){
  if(!sample)return;
- const symbol=String(sample.symbol||"btc/usd").toLowerCase();
- if(symbol!=="btc/usd")return;
+ const symbol=String(sample.symbol||"btc/usd").toLowerCase().replace("/","");
+ if(symbol!=="btcusd")return;
 
  let timestamp=Number(sample.timestamp||sample.ts||0);
+ if(typeof sample.timestamp==="string"&&!/^\d+(\.\d+)?$/.test(sample.timestamp))timestamp=Date.parse(sample.timestamp);
  if(timestamp>0&&timestamp<1e12)timestamp*=1000;
  let value=Number(sample.value);
 
@@ -606,11 +615,12 @@ function analyze(data,other){
  if((last.close-support)/range<0.15&&last.close>last.open)score+=8;
  if((resistance-last.close)/range<0.15&&last.close<last.open)score-=8;
 
+ let upConfirmations=0,downConfirmations=0;
  if(other){
   let votes=0,count=0;
   for(const k of ["1m","5m","1h"]){
-   if(other[k]==="UP"){votes++;count++}
-   if(other[k]==="DOWN"){votes--;count++}
+   if(other[k]==="UP"){votes++;count++;upConfirmations++}
+   if(other[k]==="DOWN"){votes--;count++;downConfirmations++}
   }
   if(count)score+=14*votes/count;
  }
@@ -620,7 +630,7 @@ function analyze(data,other){
  let direction="WAIT";
  if(score>=15)direction="UP";
  if(score<=-15)direction="DOWN";
- return {up,down,direction,score,e9,e21,strength,m,bb,vw,volatility,volRatio,support,resistance,last,momentumThreshold};
+ return {up,down,direction,score,e9,e21,strength,m,bb,vw,volatility,volRatio,support,resistance,last,momentumThreshold,upConfirmations,downConfirmations};
 }
 
 function requiredPriceBeatBps(reference,oneMinuteAtr){
@@ -634,65 +644,76 @@ function updateDecision(){
  if(!latestModel){
   $("signal").textContent="NO TRADE";
   $("signalReason").textContent="Waiting for enough live market data.";
+  $("decisionProbability").textContent="--";
   return;
  }
-
- const direction=latestModel.direction;
- const score=Math.abs(latestModel.score);
- const available=["1m","5m","1h"].filter(k=>latestFrames[k]==="UP"||latestFrames[k]==="DOWN");
- const confirmations=available.filter(k=>latestFrames[k]===direction).length;
- const required=2;
- let action="NO TRADE";
- let reason="";
 
  const now=nowServer();
  const elapsed=now-activeRound;
  const remaining=activeRound+900000-now;
- const chainlinkAge=now-twapTimestamp;
- const hasOpening=Number.isFinite(openingReference)&&openingReference>0;
+ const hasOpening=Number.isFinite(openingReference)&&openingReference>0&&Number.isFinite(openingTimestamp);
  const hasCurrent=Number.isFinite(twapValue)&&twapValue>0;
+ const direction=latestModel.direction;
+ let action="NO TRADE";
+ let reason="";
  let beatText="Waiting for reference";
+ let probabilityText="Waiting for current data";
+ let confirmations=0;
 
  if(hasOpening&&hasCurrent){
-  const deltaBps=(twapValue/openingReference-1)*10000;
-  const requiredBps=requiredPriceBeatBps(openingReference,latestOneMinuteAtr);
-  const lean=Math.abs(deltaBps)<requiredBps?"FLAT":deltaBps>0?"UP":"DOWN";
-  const recent=twapSamples.filter(s=>s.timestamp>=twapTimestamp-20000&&s.timestamp<=twapTimestamp);
-  const recentSpan=recent.length>1?recent.at(-1).timestamp-recent[0].timestamp:0;
-  const recentMoveBps=recent.length>1?(recent.at(-1).value/recent[0].value-1)*10000:null;
-  beatText=(deltaBps>=0?"+":"")+deltaBps.toFixed(1)+" bps · "+lean+" · min "+requiredBps.toFixed(1)+" bps";
-  if(chainlinkAge>180000)reason="Chainlink price-to-beat data is stale. Waiting for a fresh update.";
-  else if(elapsed<60000)reason="Let the first minute of the market settle before considering an entry.";
-  else if(remaining<=60000)reason="Too close to settlement. No new paper entry.";
-  else if(score<28||direction==="WAIT")reason="Technical agreement is not strong enough yet.";
-  else if(available.length<2||confirmations<required)reason="Fewer than two of the 1m, 5m and 1h trends confirm the model direction.";
-  else if(Math.abs(deltaBps)<requiredBps)reason="Chainlink has not cleared the volatility-adjusted price-to-beat threshold.";
-  else if(recent.length<2||recentSpan<8000||recentMoveBps===null)reason="Waiting for enough recent Chainlink readings to confirm the move is continuing.";
-  else if(Math.sign(recentMoveBps)!==Math.sign(deltaBps))reason="The latest Chainlink movement is fading or reversing.";
-  else if(lean!==direction)reason="Chainlink price-to-beat currently leans "+lean+", which conflicts with the technical model.";
-  else {
-   action=direction==="UP"?"BUY UP":"BUY DOWN";
-   reason="Technical score, timeframe trend and a volatility-adjusted Chainlink move all agree. Paper signal only; no order has been placed.";
+  const deltaBps=Math.log(twapValue/openingReference)*10000;
+  beatText=(deltaBps>=0?"+":"")+deltaBps.toFixed(1)+" bps";
+  liveProbability=probabilityModel.estimate({
+   opening:{value:openingReference,timestamp:openingTimestamp},
+   current:{value:twapValue,timestamp:twapTimestamp},
+   samples:twapSamples,
+   minuteCandles:frames["1m"]||[],
+   decisionAt:now,
+   roundEnd:activeRound+900000
+  });
+  if(liveProbability&&liveProbability.valid){
+   const up=liveProbability.probabilityUp;
+   const down=liveProbability.probabilityDown;
+   const side=liveProbability.direction;
+   const confidence=liveProbability.confidence;
+   confirmations=side==="UP"?latestModel.upConfirmations:latestModel.downConfirmations;
+   probabilityText="UP "+(up*100).toFixed(1)+"% / DOWN "+(down*100).toFixed(1)+"%";
+   const signedScore=latestModel.score*(side==="UP"?1:-1);
+   if(elapsed<180000)reason="Wait until the 3-minute checkpoint before considering a signal.";
+   else if(remaining<=60000)reason="Too close to settlement. No new paper entry.";
+   else if(confidence<probabilityModel.MIN_CONFIDENCE)reason="Estimated chance is below the experimental 64% signal threshold.";
+   else if(latestModel.direction!=="WAIT"&&latestModel.direction!==side&&Math.abs(latestModel.score)>=18)reason="Technical indicators strongly conflict with the probability estimate.";
+   else if(confirmations<1&&signedScore<12)reason="Technical indicators do not provide enough supporting evidence.";
+   else {
+    action=side==="UP"?"BUY UP":"BUY DOWN";
+    reason="Volatility, Chainlink price-to-beat, short-term drift and time remaining support this side. Experimental paper signal only.";
+   }
+  }else{
+   probabilityText=liveProbability&&liveProbability.reason?liveProbability.reason:"Probability estimate unavailable";
+   reason=liveProbability&&liveProbability.reason?liveProbability.reason:"Waiting for valid market data.";
   }
  }else{
-  reason="Waiting for this round's Chainlink opening reference and a current TWAP reading.";
+  liveProbability=null;
+  reason="Waiting for this round's opening Chainlink reference and current TWAP.";
  }
 
  $("signal").textContent=action;
  $("signal").className="decision-action "+(action==="BUY UP"?"green":action==="BUY DOWN"?"red":"yellow");
  card.className="decision-card "+(action==="BUY UP"?"buy-up":action==="BUY DOWN"?"buy-down":"wait");
- $("decisionState").textContent=action==="NO TRADE"?"Stand aside":"Paper setup only";
+ $("decisionState").textContent=action==="NO TRADE"?"Stand aside":"Experimental paper setup";
  $("signalReason").textContent=reason;
  $("decisionModel").textContent=direction;
- $("decisionScore").textContent=score.toFixed(0)+" / 100";
- $("decisionConfirm").textContent=confirmations+" of 3";
+ $("decisionScore").textContent=Math.abs(latestModel.score).toFixed(0)+" technical";
+ $("decisionConfirm").textContent=confirmations+" of 3 for estimate";
  $("decisionBeat").textContent=beatText;
+ $("decisionProbability").textContent=probabilityText;
  $("modelBias").textContent=direction;
  $("modelBias").className="big "+(direction==="UP"?"green":direction==="DOWN"?"red":"yellow");
  $("modelScore").textContent=(latestModel.score>=0?"+":"")+latestModel.score.toFixed(0)+" tilt";
- $("strength").textContent=score>=40?"Strong alignment":score>=28?"Qualified alignment":"Weak / mixed";
+ $("strength").textContent=liveProbability&&liveProbability.valid
+  ?(liveProbability.confidence>=0.64?"Probability threshold met":"Below probability threshold")
+  :"Waiting for probability estimate";
 }
-
 function showModel(a){
  latestModel=a;
  $("emaRead").textContent=a.e9>a.e21?"Bullish":"Bearish";
@@ -746,7 +767,7 @@ async function refreshAnalysis(){
   $("tf5").textContent=liveTf["5m"];
   $("tf15").textContent=liveTf["15m"];
   $("tf60").textContent=liveTf["1h"];
-  const a=analyze(live15,{"1m":liveTf["1m"],"5m":liveTf["5m"],"1h":liveTf["1h"]});
+  const a=analyze(live5,{"1m":liveTf["1m"],"5m":liveTf["5m"],"1h":liveTf["1h"]});
   if(!a)throw Error("Not enough candles");
   showModel(a);
   $("analysisUpdated").textContent="Live technical analysis updated: "+new Date().toLocaleTimeString()+" · provisional candle";
@@ -821,29 +842,82 @@ async function refreshAutoTracker(){
   if(!response.ok)throw Error("Cloud data not published yet");
   const data=await response.json();
   const allRounds=Array.isArray(data.rounds)?data.rounds:[];
-  const rounds=allRounds.filter(r=>r.modelVersion==="v3-volatility-aware");
-  const resolved=rounds.filter(r=>r.actualOutcome==="UP"||r.actualOutcome==="DOWN");
-  const tested=resolved.filter(r=>r.predictedDirection==="UP"||r.predictedDirection==="DOWN");
-  const correct=tested.filter(r=>r.result==="WIN").length;
-  const sideStats=side=>{
-   const rows=tested.filter(r=>r.predictedDirection===side);
-   const wins=rows.filter(r=>r.result==="WIN").length;
-   return rows.length?(100*wins/rows.length).toFixed(1)+"%":"--";
+  const rounds=allRounds.filter(r=>r.modelVersion==="v4-student-t-checkpoints");
+  const completedRounds=rounds.filter(r=>r.actualOutcome==="UP"||r.actualOutcome==="DOWN");
+  const checkpoints=rounds.flatMap(r=>(Array.isArray(r.checkpoints)?r.checkpoints:[]).map(cp=>({
+   ...cp,roundStart:r.roundStart,actualOutcome:cp.actualOutcome||r.actualOutcome||null
+  })));
+  const resolved=checkpoints.filter(cp=>cp.actualOutcome==="UP"||cp.actualOutcome==="DOWN");
+  const tested=resolved.filter(cp=>cp.predictedDirection==="UP"||cp.predictedDirection==="DOWN");
+  const wins=tested.filter(cp=>cp.predictedDirection===cp.actualOutcome).length;
+  const sideAccuracy=side=>{
+   const rows=tested.filter(cp=>cp.predictedDirection===side);
+   const correct=rows.filter(cp=>cp.result==="WIN"||cp.predictedDirection===cp.actualOutcome).length;
+   return rows.length?(100*correct/rows.length).toFixed(1)+"%":"--";
   };
-  const noTrade=resolved.filter(r=>r.predictedDirection==="WAIT").length;
-  const recent=tested.slice().sort((a,b)=>a.roundStart-b.roundStart).slice(-50);
-  const recentWins=recent.filter(r=>r.result==="WIN").length;
-  $("autoResolved").textContent=resolved.length+" / 100";
-  $("autoTested").textContent=tested.length;
-  $("autoCorrect").textContent=correct;
-  $("autoAccuracy").textContent=tested.length?(100*correct/tested.length).toFixed(1)+"%":"--";
-  $("autoUpAccuracy").textContent=sideStats("UP");
-  $("autoDownAccuracy").textContent=sideStats("DOWN");
-  $("autoNoTrade").textContent=noTrade;
-  $("autoRecentAccuracy").textContent=recent.length?(100*recentWins/recent.length).toFixed(1)+"%":"--";
-  const latestV3=rounds.slice().sort((a,b)=>b.roundStart-a.roundStart)[0];
-  // If this browser tab opened after the round began, reuse the exact
-  // opening TWAP captured by the pre-boundary cloud recorder.
+  const noTrade=resolved.filter(cp=>cp.predictedDirection==="WAIT").length;
+  const probabilityRows=resolved.filter(cp=>Number.isFinite(cp.probabilityUp));
+  const brier=probabilityRows.length
+   ?probabilityRows.reduce((sum,cp)=>sum+(cp.probabilityUp-(cp.actualOutcome==="UP"?1:0))**2,0)/probabilityRows.length
+   :null;
+
+  $("v4Rounds").textContent=completedRounds.length+" / 100";
+  $("v4Checkpoints").textContent=checkpoints.length;
+  $("v4Buys").textContent=tested.length;
+  $("v4Accuracy").textContent=tested.length?(100*wins/tested.length).toFixed(1)+"%":"--";
+  $("v4UpAccuracy").textContent=sideAccuracy("UP");
+  $("v4DownAccuracy").textContent=sideAccuracy("DOWN");
+  $("v4NoTrade").textContent=noTrade;
+  $("v4Brier").textContent=brier===null?"--":brier.toFixed(3);
+
+  const latestRound=rounds.slice().sort((a,b)=>b.roundStart-a.roundStart)[0];
+  $("v4Status").textContent=latestRound
+   ?"V4 last saved "+new Date(latestRound.updatedAt||latestRound.checkpoints?.at(-1)?.predictedAt||latestRound.roundStart).toLocaleString()+" · six time checkpoints per round"
+   :"Waiting for the first V4 probability checkpoints. Older model records stay separate.";
+
+  const order=["m3","m5","m8","m10","m12","m13_5"];
+  const labels={m3:"3 min",m5:"5 min",m8:"8 min",m10:"10 min",m12:"12 min",m13_5:"13.5 min"};
+  $("checkpointRows").innerHTML=order.map(key=>{
+   const rows=resolved.filter(cp=>cp.key===key);
+   const buys=rows.filter(cp=>cp.predictedDirection==="UP"||cp.predictedDirection==="DOWN");
+   const correct=buys.filter(cp=>cp.predictedDirection===cp.actualOutcome).length;
+   const probs=rows.filter(cp=>Number.isFinite(cp.probabilityUp));
+   const score=probs.length
+    ?(probs.reduce((sum,cp)=>sum+(cp.probabilityUp-(cp.actualOutcome==="UP"?1:0))**2,0)/probs.length).toFixed(3)
+    :"--";
+   return "<tr><td>"+labels[key]+"</td><td>"+rows.length+"</td><td>"+buys.length+"</td><td>"+correct+"</td><td>"+(buys.length?(100*correct/buys.length).toFixed(1)+"%":"--")+"</td><td>"+score+"</td></tr>";
+  }).join("");
+
+  const buckets=[
+   {label:"50–59%",min:0.50,max:0.60},
+   {label:"60–64%",min:0.60,max:0.65},
+   {label:"65–69%",min:0.65,max:0.70},
+   {label:"70–79%",min:0.70,max:0.80},
+   {label:"80–89%",min:0.80,max:0.90},
+   {label:"90–99%",min:0.90,max:1.001}
+  ];
+  $("calibrationRows").innerHTML=buckets.map(bucket=>{
+   const rows=probabilityRows.filter(cp=>cp.estimatedWinChance>=bucket.min&&cp.estimatedWinChance<bucket.max);
+   const avg=rows.length?rows.reduce((sum,cp)=>sum+cp.estimatedWinChance,0)/rows.length:null;
+   const correct=rows.filter(cp=>cp.probabilityDirection===cp.actualOutcome).length;
+   return "<tr><td>"+bucket.label+"</td><td>"+rows.length+"</td><td>"+(avg===null?"--":(avg*100).toFixed(1)+"%")+"</td><td>"+(rows.length?(100*correct/rows.length).toFixed(1)+"%":"--")+"</td></tr>";
+  }).join("");
+
+  // The fixed-time checkpoints in the same round are correlated; show them separately
+  // and do not present them as independent market samples.
+  const latest=checkpoints.slice().sort((a,b)=>b.decisionAt-a.decisionAt).slice(0,18);
+  $("latestCheckpointRows").innerHTML=latest.length?latest.map(cp=>{
+   const chance=Number.isFinite(cp.estimatedWinChance)
+    ?(cp.probabilityDirection+" "+(cp.estimatedWinChance*100).toFixed(1)+"%")
+    :"--";
+   const result=cp.actualOutcome
+    ?(cp.predictedDirection==="WAIT"?"NO SIGNAL":cp.predictedDirection===cp.actualOutcome?"WIN":"LOSS")
+    :"Pending";
+   const when=new Date(cp.roundStart).toLocaleTimeString("en-US",{timeZone:"UTC"});
+   return "<tr><td>"+when+"</td><td>"+(cp.label||cp.key)+"</td><td>"+(cp.signalAction||"NO TRADE")+"</td><td>"+chance+"</td><td>"+(cp.actualOutcome||"Pending")+"</td><td>"+result+"</td><td>"+(cp.signalReason||"")+"</td></tr>";
+  }).join(""):'<tr><td colspan="7">No V4 checkpoint records yet.</td></tr>';
+
+  // A cloud-captured opening reference lets a late browser visit join the current round.
   const currentRoundStart=roundStart(nowServer());
   const currentRoundRecord=rounds.find(r=>r.roundStart===currentRoundStart);
   if(!Number.isFinite(openingReference)&&currentRoundRecord&&Number.isFinite(Number(currentRoundRecord.openingTwap))){
@@ -851,33 +925,8 @@ async function refreshAutoTracker(){
    saveOpening(currentRoundStart,Number(currentRoundRecord.openingTwap),savedAt);
    showTwap();
   }
-  $("autoStatus").textContent=latestV3
-   ?"V3 cloud snapshot last recorded "+new Date(latestV3.collectedAt||latestV3.predictedAt).toLocaleString()+" · your Mac can be off"
-   :"Waiting for the first V3 cloud snapshot. Older test records are kept separate.";
-
-  const bands=[
-   {label:"28–39",min:28,max:40},
-   {label:"40–54",min:40,max:55},
-   {label:"55+",min:55,max:Infinity}
-  ];
-  $("scoreRows").innerHTML=bands.map(b=>{
-   const rows=tested.filter(r=>Math.abs(Number(r.modelScore))>=b.min&&Math.abs(Number(r.modelScore))<b.max);
-   const wins=rows.filter(r=>r.result==="WIN").length;
-   const accuracy=rows.length?(100*wins/rows.length).toFixed(1)+"%":"--";
-   return "<tr><td>"+b.label+"</td><td>"+rows.length+"</td><td>"+wins+"</td><td>"+accuracy+"</td></tr>";
-  }).join("");
-
-  const latest=rounds.slice().sort((a,b)=>b.roundStart-a.roundStart).slice(0,12);
-  $("autoRows").innerHTML=latest.length?latest.map(r=>{
-   const move=r.twapDistanceBps==null?"—":(r.twapDistanceBps>=0?"+":"")+Number(r.twapDistanceBps).toFixed(1)+" bps";
-   const prediction=r.signalAction||(r.predictedDirection==="UP"?"BUY UP":r.predictedDirection==="DOWN"?"BUY DOWN":"NO TRADE");
-   const outcome=r.actualOutcome||"Pending";
-   const result=r.result==="NO_SIGNAL"?"NO SIGNAL":r.result||"Pending";
-   const reason=r.signalReason||"Legacy record";
-   return "<tr><td>"+new Date(r.roundStart).toLocaleTimeString("en-US",{timeZone:"UTC"})+"</td><td>"+prediction+"</td><td>"+outcome+"</td><td>"+result+"</td><td>"+move+"</td><td>"+reason+"</td></tr>";
-  }).join(""):'<tr><td colspan="6">No V3 cloud records yet.</td></tr>';
  }catch(e){
-  $("autoStatus").textContent="Cloud accuracy data is not available yet: "+e.message;
+  $("v4Status").textContent="Checkpoint accuracy data is not available yet: "+e.message;
  }
 }
 function renderJournal(){
