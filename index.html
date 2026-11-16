@@ -88,7 +88,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
  </div>
  <div class="decision-action yellow" id="signal">NO TRADE</div>
  <div class="decision-reason" id="signalReason">Waiting for live market data and indicator confirmation.</div>
- <div class="small" style="margin-top:8px">Rapid mode: data refreshes throughout the round. New BUY suggestions can reappear after a 60-second cooldown when a fresh setup qualifies.</div>
+ <div class="small" style="margin-top:8px">Rapid mode: data refreshes throughout the round. New BUY suggestions can reappear after a 15-second cooldown when a fresh setup qualifies.</div>
 
  <div class="oracle-meter">
   <div class="oracle-head">
@@ -870,7 +870,7 @@ function updateDecision(){
      reason="The model still favors the earlier BUY direction. Continue holding only if you entered it; the dashboard does not know whether you bought.";
     }
    }else{
-    const cooldownMs=60000;
+    const cooldownMs=15000;
     const lastSignalAt=state&&Number.isFinite(state.lastSignalAt)?state.lastSignalAt:0;
     const cooldownLeft=Math.max(0,cooldownMs-(now-lastSignalAt));
     const signedScore=latestModel.score*(side==="UP"?1:-1);
@@ -881,7 +881,7 @@ function updateDecision(){
     if(state&&state.status==="exited"&&cooldownLeft>0){
      action="CASH OUT "+state.side;
      displaySide=state.side;
-     reason=(state.exitReason||"The prior setup has exited.")+" Remain out during the 60-second cooldown; a new BUY can appear if conditions qualify afterward.";
+     reason=(state.exitReason||"The prior setup has exited.")+" Remain out during the 15-second cooldown; a new BUY can appear if conditions qualify afterward.";
     }else if(canEnter){
      action=side==="UP"?"BUY UP":"BUY DOWN";
      displaySide=side;
