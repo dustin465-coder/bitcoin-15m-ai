@@ -546,6 +546,7 @@ async function main() {
     captureMethod: "Pre-boundary Chainlink TWAP capture with six fixed-time, no-lookahead probability snapshots",
     feedMode: completedFeed.feedMode,
     feedError: completedFeed.lastError || null,
+    updatedAt: new Date(serverNow()).toISOString(),
     openingTwap: opening ? opening.value : null,
     openingTwapTimestamp: opening ? opening.timestamp : null,
     checkpoints,
