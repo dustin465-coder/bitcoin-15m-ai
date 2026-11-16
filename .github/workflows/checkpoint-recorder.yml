@@ -5,6 +5,7 @@ on:
     paths:
       - "scripts/model-core.js"
       - "scripts/test-model.mjs"
+      - "scripts/test-index.mjs"
       - "scripts/record-checkpoints.mjs"
       - ".github/workflows/checkpoint-recorder.yml"
   schedule:
@@ -32,11 +33,15 @@ jobs:
         run: |
           node --check scripts/model-core.js
           node --check scripts/test-model.mjs
+          node --check scripts/test-index.mjs
           node --check scripts/record-checkpoints.mjs
           node --check scripts/merge-rounds.mjs
 
       - name: Test probability calculations
         run: node scripts/test-model.mjs
+
+      - name: Test dashboard script and elements
+        run: node scripts/test-index.mjs
 
   record:
     if: github.event_name != 'push'
