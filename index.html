@@ -71,7 +71,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 
 <section class="decision-card wait" id="decisionCard">
  <div class="decision-top">
-  <span>Paper-trade signal · no order is placed</span>
+  <span>Market decision signal · you place trades manually</span>
   <span class="pill" id="decisionState">Checking conditions</span>
  </div>
  <div class="decision-action yellow" id="signal">NO TRADE</div>
@@ -255,7 +255,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 
 <div id="error"></div>
 <footer>
-Research tool only. The Student-t probabilities are experimental and uncalibrated. The cloud tracker compares six fixed-time paper predictions with resolved Polymarket outcomes. No real trades are placed. The browser uses legacy RTDS; the cloud recorder uses authenticated PolyBolt when credentials are configured.
+Research tool only. The Student-t probabilities are experimental and uncalibrated. The cloud tracker compares six fixed-time paper predictions with resolved Polymarket outcomes. No real trades are placed. HOLD/CASH OUT follows the last BUY suggestion stored in this browser, not a confirmed position. The browser uses legacy RTDS; the cloud recorder uses authenticated PolyBolt when credentials are configured.
 </footer>
 </main>
 
@@ -680,6 +680,18 @@ function requiredPriceBeatBps(reference,oneMinuteAtr){
  return Math.max(2,Math.min(8,volatilityBps*0.20));
 }
 
+function readSignalState(){
+ try{
+  const saved=JSON.parse(localStorage.getItem("btcSignalState21")||"null");
+  if(saved&&saved.round===activeRound&&["UP","DOWN"].includes(saved.side))return saved;
+ }catch(e){}
+ return null;
+}
+
+function writeSignalState(state){
+ try{localStorage.setItem("btcSignalState21",JSON.stringify(state));}catch(e){}
+}
+
 function updateDecision(){
  const card=$("decisionCard");
  if(!latestModel){
@@ -700,6 +712,7 @@ function updateDecision(){
  let beatText="Waiting for reference";
  let probabilityText="Waiting for current data";
  let confirmations=0;
+ let displaySide=null;
 
  if(hasOpening&&hasCurrent){
   const deltaBps=Math.log(twapValue/openingReference)*10000;
@@ -719,15 +732,48 @@ function updateDecision(){
    const confidence=liveProbability.confidence;
    confirmations=side==="UP"?latestModel.upConfirmations:latestModel.downConfirmations;
    probabilityText="UP "+(up*100).toFixed(1)+"% / DOWN "+(down*100).toFixed(1)+"%";
-   const signedScore=latestModel.score*(side==="UP"?1:-1);
-   if(elapsed<180000)reason="Wait until the 3-minute checkpoint before considering a signal.";
-   else if(remaining<=60000)reason="Too close to settlement. No new paper entry.";
-   else if(confidence<probabilityModel.MIN_CONFIDENCE)reason="Estimated chance is below the experimental 64% signal threshold.";
-   else if(latestModel.direction!=="WAIT"&&latestModel.direction!==side&&Math.abs(latestModel.score)>=18)reason="Technical indicators strongly conflict with the probability estimate.";
-   else if(confirmations<1&&signedScore<12)reason="Technical indicators do not provide enough supporting evidence.";
-   else {
-    action=side==="UP"?"BUY UP":"BUY DOWN";
-    reason="Volatility, Chainlink price-to-beat, short-term drift and time remaining support this side. Experimental paper signal only.";
+
+   // Remember the dashboard's last BUY suggestion locally. This is not a
+   // connected position or proof that the user actually entered a trade.
+   const state=readSignalState();
+   if(state){
+    displaySide=state.side;
+    const heldProbability=state.side==="UP"?up:down;
+    const reverseProbability=state.side==="UP"?down:up;
+    const reverseSide=state.side==="UP"?"DOWN":"UP";
+    const reverseConfirmations=reverseSide==="UP"?latestModel.upConfirmations:latestModel.downConfirmations;
+    const reverseScore=latestModel.score*(reverseSide==="UP"?1:-1);
+    const clearReversal=reverseProbability>=probabilityModel.MIN_CONFIDENCE&&
+     (reverseConfirmations>=1||reverseScore>=12);
+    const lostEdge=heldProbability<0.55;
+    const nearSettlement=remaining<=30000;
+
+    if(state.status==="exited"||clearReversal||lostEdge||nearSettlement){
+     state.status="exited";
+     writeSignalState(state);
+     action="CASH OUT "+state.side;
+     reason=state.status==="exited"&&clearReversal
+      ?"The model now favors the opposite side. Exit the earlier suggested direction if you entered it."
+      :nearSettlement
+       ?"This round is close to settlement. Exit the earlier suggested direction if you entered it."
+       :"The estimated chance for the earlier suggested direction has weakened below the 55% exit level. Exit if you entered it.";
+    }else{
+     action="HOLD "+state.side;
+     reason="The model still favors the earlier BUY direction. Continue holding only if you entered that signal; the dashboard does not know whether you bought.";
+    }
+   }else{
+    const signedScore=latestModel.score*(side==="UP"?1:-1);
+    if(elapsed<180000)reason="Wait until the 3-minute checkpoint before considering a signal.";
+    else if(remaining<=60000)reason="Too close to settlement. No new entry signal.";
+    else if(confidence<probabilityModel.MIN_CONFIDENCE)reason="Estimated chance is below the experimental 64% entry threshold.";
+    else if(latestModel.direction!=="WAIT"&&latestModel.direction!==side&&Math.abs(latestModel.score)>=18)reason="Technical indicators strongly conflict with the probability estimate.";
+    else if(confirmations<1&&signedScore<12)reason="Technical indicators do not provide enough supporting evidence.";
+    else{
+     action=side==="UP"?"BUY UP":"BUY DOWN";
+     displaySide=side;
+     writeSignalState({side,round:activeRound,status:"active",suggestedAt:now});
+     reason="Entry conditions are met. If you choose to enter this direction on Polymarket, the dashboard will monitor for HOLD or CASH OUT conditions. Experimental signal, not a guarantee.";
+    }
    }
   }else{
    probabilityText=liveProbability&&liveProbability.reason?liveProbability.reason:"Probability estimate unavailable";
@@ -738,10 +784,15 @@ function updateDecision(){
   reason="Waiting for this round's opening Chainlink reference and current TWAP.";
  }
 
+ const isBuy=action==="BUY UP"||action==="BUY DOWN";
+ const isHold=action==="HOLD UP"||action==="HOLD DOWN";
+ const isCashOut=action==="CASH OUT UP"||action==="CASH OUT DOWN";
+ const side=displaySide||(action.endsWith("UP")?"UP":action.endsWith("DOWN")?"DOWN":null);
+ const actionColor=isCashOut?"red":side==="UP"?"green":side==="DOWN"?"red":"yellow";
  $("signal").textContent=action;
- $("signal").className="decision-action "+(action==="BUY UP"?"green":action==="BUY DOWN"?"red":"yellow");
- card.className="decision-card "+(action==="BUY UP"?"buy-up":action==="BUY DOWN"?"buy-down":"wait");
- $("decisionState").textContent=action==="NO TRADE"?"Stand aside":"Experimental paper setup";
+ $("signal").className="decision-action "+actionColor;
+ card.className="decision-card "+(side==="UP"?"buy-up":side==="DOWN"?"buy-down":"wait");
+ $("decisionState").textContent=isBuy?"Entry signal":isHold?"Hold signal · if entered":isCashOut?"Exit signal · if entered":"Stand aside";
  $("signalReason").textContent=reason;
  $("decisionModel").textContent=direction;
  $("decisionScore").textContent=Math.abs(latestModel.score).toFixed(0)+" technical";
@@ -755,6 +806,7 @@ function updateDecision(){
   ?(liveProbability.confidence>=0.64?"Probability threshold met":"Below probability threshold")
   :"Waiting for probability estimate";
 }
+
 function showModel(a){
  latestModel=a;
  $("emaRead").textContent=a.e9>a.e21?"Bullish":"Bearish";
