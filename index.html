@@ -116,6 +116,8 @@ footer{font-size:12px;color:#8494b1;line-height:1.6;margin:22px 0}
 <div><div class="small">1 HOUR</div><div class="big" id="tf60">--</div></div>
 </div>
 <div class="small" id="tfStatus">Waiting for data</div>
+<div class="small" id="analysisUpdated">Analysis last updated: waiting</div>
+<div class="small yellow">Live indicators use a provisional, forming candle. Historical backtests continue to use completed candles only.</div>
 </section>
 
 <section class="card">
@@ -432,6 +434,38 @@ function tfDirection(data){
  return ema(x.slice(-25),9)>ema(x.slice(-25),21)?"UP":"DOWN";
 }
 
+function withLiveCandle(closedData, price, now) {
+ if(!closedData.length || !Number.isFinite(price)) return closedData;
+ const start = Math.floor(now/900000)*900000;
+ const previous = closedData.at(-1);
+ if(previous.time === start) return closedData.map((c,i)=>i===closedData.length-1?{
+  ...c, high:Math.max(c.high,price), low:Math.min(c.low,price), close:price
+ }:c);
+ if(previous.time > start) return closedData;
+ return [...closedData,{
+  time:start,
+  open:previous.close,
+  high:Math.max(previous.close,price),
+  low:Math.min(previous.close,price),
+  close:price,
+  volume:0
+ }];
+}
+
+function withLiveTimeframe(data, price, seconds, now) {
+ if(!data.length || !Number.isFinite(price)) return data;
+ const start = Math.floor(now/(seconds*1000))*(seconds*1000);
+ const previous = data.at(-1);
+ if(previous.time === start) return data.map((c,i)=>i===data.length-1?{
+  ...c, high:Math.max(c.high,price), low:Math.min(c.low,price), close:price
+ }:c);
+ if(previous.time > start) return data;
+ return [...data,{
+  time:start,open:previous.close,high:Math.max(previous.close,price),
+  low:Math.min(previous.close,price),close:price,volume:0
+ }];
+}
+
 function analyze(data,other){
  if(data.length<30)return null;
  const closes=data.map(c=>c.close);
@@ -522,9 +556,25 @@ async function refreshAnalysis(){
   $("tf15").textContent=tf["15m"];
   $("tf60").textContent=tf["1h"];
   $("tfStatus").textContent=candles.length+" completed 15-minute candles loaded";
-  const a=analyze(candles,{"1m":tf["1m"],"5m":tf["5m"],"1h":tf["1h"]});
+  const now=nowServer();
+  const live15=withLiveCandle(candles,livePrice,now);
+  const live1=withLiveTimeframe(frames["1m"],livePrice,60,now);
+  const live5=withLiveTimeframe(frames["5m"],livePrice,300,now);
+  const live60=withLiveTimeframe(frames["1h"],livePrice,3600,now);
+  const liveTf={
+   "1m":tfDirection(live1),
+   "5m":tfDirection(live5),
+   "15m":tfDirection(live15),
+   "1h":tfDirection(live60)
+  };
+  $("tf1").textContent=liveTf["1m"];
+  $("tf5").textContent=liveTf["5m"];
+  $("tf15").textContent=liveTf["15m"];
+  $("tf60").textContent=liveTf["1h"];
+  const a=analyze(live15,{"1m":liveTf["1m"],"5m":liveTf["5m"],"1h":liveTf["1h"]});
   if(!a)throw Error("Not enough candles");
   showModel(a);
+  $("analysisUpdated").textContent="Live technical analysis updated: "+new Date().toLocaleTimeString()+" · provisional candle";
   $("error").textContent="";
   settleJournal(candles);
  }catch(e){
@@ -646,7 +696,7 @@ async function start(){
 start();
 
 setInterval(refreshPrice,5000);
-setInterval(refreshAnalysis,30000);
+setInterval(async()=>{if(livePrice===null)await refreshPrice();await refreshAnalysis();},15000);
 setInterval(refreshPolymarket,15000);
 setInterval(updateCountdown,1000);
 setInterval(syncServerTime,60000);
