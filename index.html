@@ -4,133 +4,158 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>BTC AI Lab 2.0</title>
+<title>BTC AI Lab 2.1</title>
 <style>
 *{box-sizing:border-box}
-body{margin:0;background:#0b1020;color:#edf2ff;font-family:Arial,sans-serif;padding:18px}
-main{max-width:1100px;margin:auto}
-h1{font-size:28px;margin-bottom:5px}
-h2{font-size:15px;color:#a9bad7;margin:0 0 15px}
-.sub,.small{color:#91a2c0;font-size:13px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:13px}
-.card{background:#151f35;border:1px solid #2a3854;border-radius:13px;padding:17px;margin:14px 0}
-.big{font-size:29px;font-weight:bold}
-.signal{font-size:32px;font-weight:bold;margin:8px 0}
+body{margin:0;background:#0b1020;color:#edf2ff;font-family:Arial;padding:16px}
+main{max-width:1050px;margin:auto}
+h1{font-size:27px}
+h2{font-size:15px;color:#a9bad7;margin:0 0 14px}
+.card{background:#151f35;border:1px solid #2a3854;border-radius:13px;padding:17px;margin:13px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:12px}
+.big{font-size:27px;font-weight:bold}
+.signal{font-size:31px;font-weight:bold;margin:8px 0}
+.small{font-size:13px;color:#91a2c0;line-height:1.5}
 .green{color:#43d99b}.red{color:#ff7185}.yellow{color:#ffd36a}
-.bar{height:10px;background:#303d57;border-radius:8px;overflow:hidden;margin-top:9px}
+.bar{height:9px;background:#303d57;border-radius:8px;overflow:hidden;margin-top:8px}
 .fill{height:100%;background:#43d99b;width:0%}
 .fill.down{background:#ff7185}
-button{background:#5479f7;color:white;border:0;border-radius:8px;padding:12px 17px;font-weight:bold;cursor:pointer;margin:5px 5px 5px 0}
+button{background:#5479f7;color:white;border:0;border-radius:8px;padding:12px 17px;font-weight:bold;cursor:pointer;margin:5px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 td,th{text-align:left;padding:9px;border-bottom:1px solid #303d57}
-.tag{display:inline-block;border:1px solid #354664;border-radius:20px;padding:5px 9px;font-size:12px;margin:3px}
 a{color:#9ab5ff}
 #error{color:#ff8293;white-space:pre-wrap;font-size:13px}
-footer{color:#8494b1;font-size:12px;line-height:1.5;margin:22px 0}
-@media(max-width:500px){body{padding:10px}.big{font-size:24px}}
+footer{font-size:12px;color:#8494b1;line-height:1.6;margin:22px 0}
 </style>
 </head>
 <body>
 <main>
-<h1>₿ BTC AI Lab 2.0</h1>
-<div class="sub">Technical analysis · Multi-timeframe confirmation · Paper testing</div>
+
+<h1>₿ BTC AI Lab 2.1</h1>
+<div class="small">Live Bitcoin · Chainlink settlement tracking · Technical analysis · Paper testing</div>
 
 <div class="grid">
 <section class="card">
-<h2>LIVE BITCOIN PRICE</h2>
+<h2>LIVE BITCOIN — COINBASE</h2>
 <div class="big" id="price">Connecting...</div>
-<div class="small" id="priceStatus">Connecting to Coinbase</div>
+<div class="small" id="priceStatus">Connecting</div>
 </section>
 <section class="card">
-<h2>NEXT 15-MINUTE MARKET</h2>
+<h2>15-MINUTE COUNTDOWN</h2>
 <div class="big" id="countdown">--:--</div>
-<div class="small" id="clockStatus">Synchronizing server time...</div>
+<div class="small" id="clockStatus">Synchronizing clock</div>
 </section>
 <section class="card">
-<h2>MODEL DIRECTION</h2>
+<h2>AI DIRECTION</h2>
 <div class="signal yellow" id="signal">WAIT</div>
-<div class="small" id="signalReason">Waiting for indicators</div>
+<div class="small" id="signalReason">Analyzing</div>
 </section>
 </div>
 
 <section class="card">
-<h2>MODEL SCORES — NOT PROBABILITIES</h2>
+<h2>POLYMARKET PRICE TO BEAT — CHAINLINK TWAP 60s</h2>
+<div class="small" id="twapStatus">Connecting to Polymarket's Chainlink feed...</div>
+<div class="grid" style="margin-top:16px">
+<div>
+<div class="small">OPENING REFERENCE</div>
+<div class="big" id="openingTwap">Waiting...</div>
+</div>
+<div>
+<div class="small">CURRENT CHAINLINK TWAP</div>
+<div class="big" id="currentTwap">Waiting...</div>
+</div>
+<div>
+<div class="small">DISTANCE FROM OPEN</div>
+<div class="big" id="twapDifference">--</div>
+</div>
+<div>
+<div class="small">CURRENT SETTLEMENT LEAN</div>
+<div class="big yellow" id="twapLean">WAIT</div>
+</div>
+</div>
+<div class="small" id="twapRound">Waiting for a valid opening reference.</div>
+</section>
+
+<section class="card">
+<h2>TECHNICAL ANALYSIS SCORES — NOT PROBABILITIES</h2>
 <div class="grid">
 <div>
-<div class="small">UP score</div>
+<div class="small">UP SCORE</div>
 <div class="big green" id="upScore">--</div>
 <div class="bar"><div class="fill" id="upBar"></div></div>
 </div>
 <div>
-<div class="small">DOWN score</div>
+<div class="small">DOWN SCORE</div>
 <div class="big red" id="downScore">--</div>
 <div class="bar"><div class="fill down" id="downBar"></div></div>
 </div>
 </div>
-<div class="small" id="strength">Signal strength: waiting</div>
+<div class="small" id="strength">Waiting for indicators</div>
 </section>
 
 <section class="card">
-<h2>TECHNICAL ANALYSIS</h2>
+<h2>TECHNICAL INDICATORS</h2>
 <div class="grid">
-<div><span class="tag">EMA 9 / 21</span><div class="big" id="emaRead">--</div><div class="small">Short-term trend</div></div>
-<div><span class="tag">RSI 14</span><div class="big" id="rsiRead">--</div><div class="small">Momentum</div></div>
-<div><span class="tag">MACD</span><div class="big" id="macdRead">--</div><div class="small">Momentum shift</div></div>
-<div><span class="tag">VWAP</span><div class="big" id="vwapRead">--</div><div class="small">Volume-weighted price</div></div>
-<div><span class="tag">Bollinger Bands</span><div class="big" id="bbRead">--</div><div class="small">Price versus bands</div></div>
-<div><span class="tag">ATR 14</span><div class="big" id="atrRead">--</div><div class="small">Volatility in dollars</div></div>
-<div><span class="tag">Volume</span><div class="big" id="volumeRead">--</div><div class="small">Versus recent average</div></div>
-<div><span class="tag">Support / Resistance</span><div class="big" id="srRead">--</div><div class="small">Recent 15m range</div></div>
+<div><div class="small">EMA 9 / 21</div><div class="big" id="emaRead">--</div></div>
+<div><div class="small">RSI 14</div><div class="big" id="rsiRead">--</div></div>
+<div><div class="small">MACD</div><div class="big" id="macdRead">--</div></div>
+<div><div class="small">VWAP</div><div class="big" id="vwapRead">--</div></div>
+<div><div class="small">BOLLINGER BANDS</div><div class="big" id="bbRead">--</div></div>
+<div><div class="small">ATR 14</div><div class="big" id="atrRead">--</div></div>
+<div><div class="small">VOLUME RATIO</div><div class="big" id="volumeRead">--</div></div>
+<div><div class="small">SUPPORT / RESISTANCE</div><div class="big" id="srRead">--</div></div>
 </div>
 </section>
 
 <section class="card">
 <h2>MULTI-TIMEFRAME CONFIRMATION</h2>
 <div class="grid">
-<div><div class="small">1 minute</div><div class="big" id="tf1">--</div></div>
-<div><div class="small">5 minutes</div><div class="big" id="tf5">--</div></div>
-<div><div class="small">15 minutes</div><div class="big" id="tf15">--</div></div>
-<div><div class="small">1 hour</div><div class="big" id="tf60">--</div></div>
+<div><div class="small">1 MINUTE</div><div class="big" id="tf1">--</div></div>
+<div><div class="small">5 MINUTES</div><div class="big" id="tf5">--</div></div>
+<div><div class="small">15 MINUTES</div><div class="big" id="tf15">--</div></div>
+<div><div class="small">1 HOUR</div><div class="big" id="tf60">--</div></div>
 </div>
-<div class="small" id="tfStatus">Loading timeframe data...</div>
+<div class="small" id="tfStatus">Waiting for data</div>
 </section>
 
 <section class="card">
-<h2>POLYMARKET LIVE MARKET</h2>
-<div class="small" id="marketStatus">Looking up current contract...</div>
+<h2>POLYMARKET CONTRACT PRICES</h2>
+<div class="small" id="marketStatus">Looking up current market...</div>
 <div class="grid" style="margin-top:12px">
-<div><div class="small">UP best ask</div><div class="big green" id="polyUp">--</div></div>
-<div><div class="small">DOWN best ask</div><div class="big red" id="polyDown">--</div></div>
+<div><div class="small">UP BEST ASK</div><div class="big green" id="polyUp">--</div></div>
+<div><div class="small">DOWN BEST ASK</div><div class="big red" id="polyDown">--</div></div>
 </div>
-<div class="small" id="marketLink"></div>
+<div id="marketLink" class="small"></div>
 </section>
 
 <section class="card">
 <h2>HISTORICAL BACKTEST</h2>
-<div class="small">Tests the 15-minute indicator model against available completed Coinbase candles. This simplified backtest does not include multi-timeframe confirmation, Polymarket prices, fees, or slippage.</div>
+<div class="small">Tests indicator signals against the next Coinbase 15-minute candle. This is a price-direction proxy, not an actual Chainlink-settled Polymarket backtest.</div>
 <button id="backtestButton">Run Backtest</button>
-<div class="small" id="backtestStatus">Not run yet</div>
-<div class="grid" style="margin-top:12px">
+<div id="backtestStatus" class="small">Not run yet</div>
+<div class="grid">
 <div><div class="small">Signals tested</div><div class="big" id="tested">--</div></div>
 <div><div class="small">Correct</div><div class="big" id="correct">--</div></div>
 <div><div class="small">Accuracy</div><div class="big" id="accuracy">--</div></div>
-<div><div class="small">Coverage</div><div class="big" id="coverage">--</div></div>
 </div>
 </section>
 
 <section class="card">
 <h2>PAPER TRADING JOURNAL</h2>
-<div class="small">Record a signal without placing a real bet. Results are checked against the next completed Coinbase candle.</div>
+<div class="small">Records signals without placing real trades. Results use the next Coinbase candle as a proxy.</div>
 <button id="recordButton">Record Current Signal</button>
-<div class="small" id="journalStatus">No predictions recorded</div>
-<div style="overflow-x:auto;margin-top:12px">
-<table><thead><tr><th>Time</th><th>Signal</th><th>Entry</th><th>Result</th></tr></thead><tbody id="journal"></tbody></table>
+<div id="journalStatus" class="small">No predictions recorded</div>
+<div style="overflow-x:auto">
+<table>
+<thead><tr><th>Time</th><th>Signal</th><th>Price</th><th>Result</th></tr></thead>
+<tbody id="journal"></tbody>
+</table>
 </div>
 </section>
 
 <div id="error"></div>
 <footer>
-Research and paper-testing tool only. The model uses technical rules and weighted scores, not trained AI. Scores are not calibrated probabilities. Backtest results are historical and do not predict future performance. No real trades are placed. Keep this browser tab open for automatic updates.
+Research tool only. Indicator scores are not calibrated probabilities. Coinbase is used for technical analysis; Chainlink TWAP is displayed separately for settlement tracking. No real trades are placed. Keep this browser tab open. The public Polymarket RTDS price stream is scheduled to retire November 30, 2026.
 </footer>
 </main>
 
@@ -145,7 +170,14 @@ let candles=[];
 let frames={};
 let livePrice=null;
 let latestModel=null;
-let journal=JSON.parse(localStorage.getItem("btcLabJournal2")||"[]");
+let twapSocket=null;
+let twapValue=null;
+let twapTimestamp=0;
+let activeRound=0;
+let openingReference=null;
+let openingTimestamp=null;
+let twapConnected=false;
+let journal=JSON.parse(localStorage.getItem("btcLabJournal21")||"[]");
 
 function nowServer(){return Date.now()+serverOffset}
 
@@ -154,25 +186,172 @@ async function syncServerTime(){
   const r=await fetch("https://api.exchange.coinbase.com/time",{cache:"no-store"});
   if(!r.ok)throw Error("Time service unavailable");
   const d=await r.json();
-  const server=d.epoch?Number(d.epoch)*1000:Date.parse(d.iso);
-  if(!Number.isFinite(server))throw Error("Invalid server time");
-  serverOffset=server-Date.now();
+  const t=d.epoch?Number(d.epoch)*1000:Date.parse(d.iso);
+  if(!Number.isFinite(t))throw Error("Invalid server time");
+  serverOffset=t-Date.now();
   serverSynced=true;
   $("clockStatus").textContent="Coinbase server time synchronized";
   $("clockStatus").className="small green";
  }catch(e){
   serverSynced=false;
-  $("clockStatus").textContent="Server time unavailable — using computer clock";
-  $("clockStatus").className="small red";
+  $("clockStatus").textContent="Using computer clock — server sync unavailable";
+  $("clockStatus").className="small yellow";
+ }
+}
+
+function roundStart(t){return Math.floor(t/900000)*900000}
+
+function loadOpening(round){
+ try{
+  const saved=JSON.parse(localStorage.getItem("btcTwapOpen_"+round)||"null");
+  if(saved&&Number.isFinite(saved.value)){
+   openingReference=saved.value;
+   openingTimestamp=saved.timestamp;
+  }else{
+   openingReference=null;
+   openingTimestamp=null;
+  }
+ }catch(e){
+  openingReference=null;
+  openingTimestamp=null;
+ }
+}
+
+function saveOpening(round,value,timestamp){
+ openingReference=value;
+ openingTimestamp=timestamp;
+ localStorage.setItem("btcTwapOpen_"+round,JSON.stringify({value,timestamp}));
+}
+
+function updateRound(){
+ const current=roundStart(nowServer());
+ if(current!==activeRound){
+  activeRound=current;
+  loadOpening(activeRound);
+ }
+}
+
+function showTwap(){
+ if(twapValue!==null){
+  $("currentTwap").textContent=money(twapValue);
+ }
+ if(openingReference!==null&&twapValue!==null){
+  const diff=twapValue-openingReference;
+  $("openingTwap").textContent=money(openingReference);
+  $("twapDifference").textContent=(diff>=0?"+":"")+money(diff);
+  $("twapDifference").className="big "+(diff>=0?"green":"red");
+  $("twapLean").textContent=diff>=0?"UP":"DOWN";
+  $("twapLean").className="big "+(diff>=0?"green":"red");
+  $("twapRound").textContent="Opening reference captured "+new Date(openingTimestamp).toLocaleTimeString()+" · Round "+new Date(activeRound).toLocaleTimeString();
+ }else{
+  $("openingTwap").textContent="Not captured";
+  $("twapDifference").textContent="--";
+  $("twapLean").textContent="WAIT";
+  $("twapLean").className="big yellow";
+  $("twapRound").textContent="Opening reference unavailable for this round. Keep the dashboard open for the next 15-minute boundary.";
+ }
+}
+
+function handleTwapSample(sample){
+ if(!sample)return;
+ const symbol=String(sample.symbol||"btc/usd").toLowerCase();
+ if(symbol!=="btc/usd")return;
+
+ const timestamp=Number(sample.timestamp||sample.ts||0);
+ let value=Number(sample.value);
+
+ if(!Number.isFinite(value)&&sample.full_accuracy_value){
+  value=Number(sample.full_accuracy_value)/1e18;
+ }
+ if(!Number.isFinite(timestamp)||!Number.isFinite(value)||value<=0)return;
+
+ if(timestamp>=twapTimestamp){
+  twapTimestamp=timestamp;
+  twapValue=value;
+ }
+
+ const round=roundStart(timestamp);
+
+ // Capture the published 60-second TWAP at the beginning
+ // of the 15-minute round, not an ordinary exchange spot price.
+ if(timestamp>=round&&timestamp<=round+15000){
+  const key="btcTwapOpen_"+round;
+  if(!localStorage.getItem(key)){
+   saveOpening(round,value,timestamp);
+  }
+ }
+
+ updateRound();
+ if(round===activeRound){
+  const saved=JSON.parse(localStorage.getItem("btcTwapOpen_"+activeRound)||"null");
+  if(saved){
+   openingReference=saved.value;
+   openingTimestamp=saved.timestamp;
+  }
+ }
+ showTwap();
+}
+
+function connectTwap(){
+ try{
+  if(twapSocket)twapSocket.close();
+  $("twapStatus").textContent="Connecting to Polymarket Chainlink TWAP stream...";
+  twapSocket=new WebSocket("wss://ws-live-data.polymarket.com");
+
+  twapSocket.onopen=()=>{
+   twapConnected=true;
+   $("twapStatus").textContent="Connected · Waiting for Chainlink BTC/USD TWAP 60s";
+   $("twapStatus").className="small green";
+   twapSocket.send(JSON.stringify({
+    action:"subscribe",
+    subscriptions:[{
+     topic:"crypto_prices_twap_sixty",
+     type:"*",
+     filters:'{"symbol":"btc/usd"}'
+    }]
+   }));
+  };
+
+  twapSocket.onmessage=(event)=>{
+   let msg;
+   try{msg=JSON.parse(event.data)}catch(e){return}
+   if(msg.topic!=="crypto_prices_twap_sixty")return;
+   const p=msg.payload||{};
+
+   if(Array.isArray(p.data)){
+    p.data.forEach(handleTwapSample);
+   }else{
+    handleTwapSample(p);
+   }
+
+   if(twapValue!==null){
+    $("twapStatus").textContent="Live Chainlink TWAP 60s · Last update "+new Date(twapTimestamp).toLocaleTimeString();
+    $("twapStatus").className="small green";
+   }
+  };
+
+  twapSocket.onerror=()=>{
+   $("twapStatus").textContent="Chainlink stream connection error";
+   $("twapStatus").className="small red";
+  };
+
+  twapSocket.onclose=()=>{
+   twapConnected=false;
+   $("twapStatus").textContent="Stream disconnected · Reconnecting...";
+   $("twapStatus").className="small yellow";
+   setTimeout(connectTwap,5000);
+  };
+ }catch(e){
+  $("twapStatus").textContent="Could not start Chainlink stream: "+e.message;
  }
 }
 
 async function getCandles(granularity){
  const url="https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity="+granularity;
  const r=await fetch(url,{cache:"no-store"});
- if(!r.ok)throw Error("Coinbase "+granularity+"s candles: HTTP "+r.status);
+ if(!r.ok)throw Error("Coinbase candle error "+r.status);
  const data=await r.json();
- if(!Array.isArray(data)||!data.length)throw Error("No candle data for "+granularity);
+ if(!Array.isArray(data)||!data.length)throw Error("No candle data");
  const ms=granularity*1000;
  return data.map(k=>({
   time:Number(k[0])*1000,low:Number(k[1]),high:Number(k[2]),
@@ -183,14 +362,14 @@ async function getCandles(granularity){
 async function refreshPrice(){
  try{
   const r=await fetch("https://api.exchange.coinbase.com/products/BTC-USD/ticker",{cache:"no-store"});
-  if(!r.ok)throw Error("Ticker HTTP "+r.status);
+  if(!r.ok)throw Error("Ticker error");
   const d=await r.json();
   livePrice=Number(d.price);
   $("price").textContent=money(livePrice);
-  $("priceStatus").textContent="Live Coinbase ticker · "+new Date().toLocaleTimeString();
+  $("priceStatus").textContent="Live Coinbase · "+new Date().toLocaleTimeString();
   $("priceStatus").className="small green";
  }catch(e){
-  $("priceStatus").textContent="Price feed error: "+e.message;
+  $("priceStatus").textContent="Price feed unavailable";
   $("priceStatus").className="small red";
  }
 }
@@ -212,7 +391,7 @@ function rsi(values){
  if(values.length<15)return 50;
  let g=0,l=0;
  for(let i=values.length-14;i<values.length;i++){
-  let d=values[i]-values[i-1];
+  const d=values[i]-values[i-1];
   if(d>0)g+=d;else l-=d;
  }
  if(l===0)return 100;
@@ -222,13 +401,12 @@ function macd(values){
  const a=emaLine(values,12),b=emaLine(values,26);
  const line=a.map((v,i)=>v-b[i]);
  const sig=emaLine(line.slice(-9),9);
- return {line:line.at(-1),signal:sig.at(-1),hist:line.at(-1)-sig.at(-1)};
+ return line.at(-1)-sig.at(-1);
 }
 function bollinger(values){
- const last=values.slice(-20);
- const mean=last.reduce((a,b)=>a+b,0)/last.length;
- const variance=last.reduce((a,b)=>a+(b-mean)**2,0)/last.length;
- const sd=Math.sqrt(variance);
+ const x=values.slice(-20);
+ const mean=x.reduce((a,b)=>a+b,0)/x.length;
+ const sd=Math.sqrt(x.reduce((a,b)=>a+(b-mean)**2,0)/x.length);
  return {mid:mean,upper:mean+2*sd,lower:mean-2*sd};
 }
 function atr(data){
@@ -240,21 +418,21 @@ function atr(data){
  return ranges.slice(-14).reduce((a,b)=>a+b,0)/Math.min(14,ranges.length);
 }
 function vwap(data){
- const sample=data.slice(-96);
+ const x=data.slice(-96);
  let pv=0,vol=0;
- for(const c of sample){
+ for(const c of x){
   const typical=(c.high+c.low+c.close)/3;
   pv+=typical*c.volume;vol+=c.volume;
  }
  return vol?pv/vol:data.at(-1).close;
 }
-function timeframeDirection(data){
+function tfDirection(data){
  if(!data||data.length<25)return "N/A";
- const closes=data.map(c=>c.close);
- return ema(closes.slice(-25),9)>ema(closes.slice(-25),21)?"UP":"DOWN";
+ const x=data.map(c=>c.close);
+ return ema(x.slice(-25),9)>ema(x.slice(-25),21)?"UP":"DOWN";
 }
 
-function analyze(data,otherFrames){
+function analyze(data,other){
  if(data.length<30)return null;
  const closes=data.map(c=>c.close);
  const last=data.at(-1);
@@ -263,7 +441,7 @@ function analyze(data,otherFrames){
  const strength=rsi(closes);
  const m=macd(closes);
  const bb=bollinger(closes);
- const vol=vwap(data);
+ const vw=vwap(data);
  const volatility=atr(data);
  const avgVol=data.slice(-21,-1).reduce((s,c)=>s+c.volume,0)/20;
  const volRatio=avgVol?last.volume/avgVol:1;
@@ -272,15 +450,14 @@ function analyze(data,otherFrames){
  const support=Math.min(...recent.map(c=>c.low));
  const resistance=Math.max(...recent.map(c=>c.high));
  let score=0;
- const add=(condition,weight)=>{if(condition)score+=weight;else score-=weight;};
+ const add=(condition,weight)=>{score+=condition?weight:-weight};
 
  add(e9>e21,12);
- add(m.hist>0,12);
+ add(m>0,12);
  if(strength>55)score+=8;
  else if(strength<45)score-=8;
- if(last.close>bb.mid)score+=5;
- else score-=5;
- add(last.close>vol,10);
+ score+=last.close>bb.mid?5:-5;
+ add(last.close>vw,10);
  if(volRatio>1.2){
   if(last.close>last.open)score+=8;
   else if(last.close<last.open)score-=8;
@@ -289,19 +466,16 @@ function analyze(data,otherFrames){
  else if(momentum< -0.001)score-=10;
 
  const range=Math.max(1,resistance-support);
- const nearSupport=(last.close-support)/range<0.15;
- const nearResistance=(resistance-last.close)/range<0.15;
- if(nearSupport&&last.close>last.open)score+=8;
- if(nearResistance&&last.close<last.open)score-=8;
+ if((last.close-support)/range<0.15&&last.close>last.open)score+=8;
+ if((resistance-last.close)/range<0.15&&last.close<last.open)score-=8;
 
- let frameCount=0,frameVotes=0;
- if(otherFrames){
-  for(const key of ["1m","5m","1h"]){
-   const dir=otherFrames[key];
-   if(dir==="UP"){frameVotes++;frameCount++;}
-   if(dir==="DOWN"){frameVotes--;frameCount++;}
+ if(other){
+  let votes=0,count=0;
+  for(const k of ["1m","5m","1h"]){
+   if(other[k]==="UP"){votes++;count++}
+   if(other[k]==="DOWN"){votes--;count++}
   }
-  if(frameCount)score+=14*(frameVotes/frameCount);
+  if(count)score+=14*votes/count;
  }
 
  const up=Math.max(5,Math.min(95,50+score/2));
@@ -309,7 +483,7 @@ function analyze(data,otherFrames){
  let direction="WAIT";
  if(score>=15)direction="UP";
  if(score<=-15)direction="DOWN";
- return {up,down,direction,score,e9,e21,strength,m,bb,vol,volatility,volRatio,momentum,support,resistance,last};
+ return {up,down,direction,score,e9,e21,strength,m,bb,vw,volatility,volRatio,support,resistance,last};
 }
 
 function showModel(a){
@@ -320,16 +494,13 @@ function showModel(a){
  $("downBar").style.width=a.down+"%";
  $("signal").textContent=a.direction;
  $("signal").className="signal "+(a.direction==="UP"?"green":a.direction==="DOWN"?"red":"yellow");
- $("signalReason").textContent="Weighted technical model · score difference "+Math.abs(a.score).toFixed(0);
- $("strength").textContent="Signal strength: "+(Math.abs(a.score)>=35?"Strong":Math.abs(a.score)>=15?"Moderate":"Weak / no trade")+" · Not a win probability";
+ $("signalReason").textContent="Weighted technical score · not a probability";
+ $("strength").textContent="Signal strength: "+(Math.abs(a.score)>=35?"Strong":Math.abs(a.score)>=15?"Moderate":"Weak / WAIT");
  $("emaRead").textContent=a.e9>a.e21?"Bullish":"Bearish";
- $("emaRead").className="big "+(a.e9>a.e21?"green":"red");
  $("rsiRead").textContent=a.strength.toFixed(1);
- $("macdRead").textContent=a.m.hist>=0?"Bullish":"Bearish";
- $("macdRead").className="big "+(a.m.hist>=0?"green":"red");
- $("vwapRead").textContent=a.last.close>a.vol?"Above":"Below";
- $("vwapRead").className="big "+(a.last.close>a.vol?"green":"red");
- $("bbRead").textContent=a.last.close>a.bb.upper?"Above upper":a.last.close<a.bb.lower?"Below lower":"Inside bands";
+ $("macdRead").textContent=a.m>=0?"Bullish":"Bearish";
+ $("vwapRead").textContent=a.last.close>a.vw?"Above":"Below";
+ $("bbRead").textContent=a.last.close>a.bb.upper?"Above upper":a.last.close<a.bb.lower?"Below lower":"Inside";
  $("atrRead").textContent=money(a.volatility);
  $("volumeRead").textContent=a.volRatio.toFixed(2)+"x";
  $("srRead").textContent=money(a.support)+" / "+money(a.resistance);
@@ -337,37 +508,37 @@ function showModel(a){
 
 async function refreshAnalysis(){
  try{
-  const results=await Promise.all([
-   getCandles(900),getCandles(60),getCandles(300),getCandles(3600)
-  ]);
+  const results=await Promise.all([getCandles(900),getCandles(60),getCandles(300),getCandles(3600)]);
   candles=results[0];
   frames={"1m":results[1],"5m":results[2],"1h":results[3]};
   const tf={
-   "1m":timeframeDirection(frames["1m"]),
-   "5m":timeframeDirection(frames["5m"]),
-   "15m":timeframeDirection(candles),
-   "1h":timeframeDirection(frames["1h"])
+   "1m":tfDirection(frames["1m"]),
+   "5m":tfDirection(frames["5m"]),
+   "15m":tfDirection(candles),
+   "1h":tfDirection(frames["1h"])
   };
   $("tf1").textContent=tf["1m"];
   $("tf5").textContent=tf["5m"];
   $("tf15").textContent=tf["15m"];
   $("tf60").textContent=tf["1h"];
-  $("tfStatus").textContent="Completed candles only · "+candles.length+" completed 15-minute candles loaded";
+  $("tfStatus").textContent=candles.length+" completed 15-minute candles loaded";
   const a=analyze(candles,{"1m":tf["1m"],"5m":tf["5m"],"1h":tf["1h"]});
-  if(!a)throw Error("Not enough completed 15-minute candles yet");
+  if(!a)throw Error("Not enough candles");
   showModel(a);
   $("error").textContent="";
   settleJournal(candles);
  }catch(e){
-  $("error").textContent="Analysis update: "+e.message;
+  $("error").textContent="Technical analysis: "+e.message;
  }
 }
 
 function updateCountdown(){
+ updateRound();
  const now=nowServer();
  const next=(Math.floor(now/900000)+1)*900000;
  const left=Math.max(0,Math.floor((next-now)/1000));
  $("countdown").textContent=String(Math.floor(left/60)).padStart(2,"0")+":"+String(left%60).padStart(2,"0");
+ showTwap();
 }
 
 async function refreshPolymarket(){
@@ -377,63 +548,46 @@ async function refreshPolymarket(){
   const r=await fetch("https://gamma-api.polymarket.com/events?slug="+slug,{cache:"no-store"});
   if(!r.ok)throw Error("Market lookup HTTP "+r.status);
   const events=await r.json();
-  const event=events[0];
-  if(!event)throw Error("Current market not found");
-  const market=(event.markets||[])[0];
-  if(!market)throw Error("Market details unavailable");
+  if(!events.length)throw Error("Current market not found");
+  const market=(events[0].markets||[])[0];
+  if(!market)throw Error("Market details missing");
   let outcomes=market.outcomes,ids=market.clobTokenIds;
   if(typeof outcomes==="string")outcomes=JSON.parse(outcomes);
   if(typeof ids==="string")ids=JSON.parse(ids);
   let up=null,down=null;
-  for(let i=0;i<(outcomes||[]).length;i++){
-   const name=String(outcomes[i]).toLowerCase();
-   if(!ids||!ids[i])continue;
-   const br=await fetch("https://clob.polymarket.com/book?token_id="+ids[i],{cache:"no-store"});
+  for(let i=0;i<outcomes.length;i++){
+   const token=ids&&ids[i];
+   if(!token)continue;
+   const br=await fetch("https://clob.polymarket.com/book?token_id="+token,{cache:"no-store"});
    if(!br.ok)continue;
-   const book=await br.json();
-   const asks=(book.asks||[]).map(x=>Number(x.price)).filter(x=>x>0).sort((a,b)=>a-b);
-   if(name==="up")up=asks[0]??null;
-   if(name==="down")down=asks[0]??null;
+   const b=await br.json();
+   const asks=(b.asks||[]).map(x=>Number(x.price)).filter(x=>x>0).sort((a,b)=>a-b);
+   if(String(outcomes[i]).toLowerCase()==="up")up=asks[0]??null;
+   if(String(outcomes[i]).toLowerCase()==="down")down=asks[0]??null;
   }
   if(up!==null)$("polyUp").textContent=pct(up);
   if(down!==null)$("polyDown").textContent=pct(down);
-  if(up===null&&down===null&&market.outcomePrices){
-   let prices=market.outcomePrices;
-   if(typeof prices==="string")prices=JSON.parse(prices);
-   outcomes.forEach((o,i)=>{
-    if(String(o).toLowerCase()==="up")up=Number(prices[i]);
-    if(String(o).toLowerCase()==="down")down=Number(prices[i]);
-   });
-   if(up!==null)$("polyUp").textContent=pct(up);
-   if(down!==null)$("polyDown").textContent=pct(down);
-  }
-  $("marketStatus").textContent="Contract checked "+new Date().toLocaleTimeString();
-  $("marketLink").innerHTML='<a target="_blank" rel="noopener" href="https://polymarket.com/event/'+slug+'">Open current Polymarket contract ↗</a>';
+  $("marketStatus").textContent="Market checked "+new Date().toLocaleTimeString();
+  $("marketLink").innerHTML='<a target="_blank" rel="noopener" href="https://polymarket.com/event/'+slug+'">Open current Polymarket market ↗</a>';
  }catch(e){
-  $("marketStatus").textContent="Market data unavailable: "+e.message;
+  $("marketStatus").textContent="Market unavailable: "+e.message;
  }
 }
 
 function runBacktest(){
- const data=candles;
- let tested=0,correct=0,eligible=0;
- for(let i=30;i<data.length-1;i++){
-  const a=analyze(data.slice(0,i+1),null);
-  if(!a)continue;
-  eligible++;
-  if(a.direction==="WAIT")continue;
+ let tested=0,correct=0;
+ for(let i=30;i<candles.length-1;i++){
+  const a=analyze(candles.slice(0,i+1),null);
+  if(!a||a.direction==="WAIT")continue;
   tested++;
-  const next=data[i+1];
-  const actual=next.close>next.open?"UP":next.close<next.open?"DOWN":"FLAT";
+  const next=candles[i+1];
+  const actual=next.close>=next.open?"UP":"DOWN";
   if(a.direction===actual)correct++;
  }
  $("tested").textContent=tested;
  $("correct").textContent=correct;
  $("accuracy").textContent=tested?pct(correct/tested):"N/A";
- $("coverage").textContent=eligible?pct(tested/eligible):"N/A";
- $("backtestStatus").textContent=tested?
-  "Completed using "+data.length+" available candles. This is a small historical sample, not proof of an edge.":
-  "Not enough completed candles to test.";
+ $("backtestStatus").textContent=tested?"Coinbase candle proxy only · excludes Polymarket settlement, fees and spreads":"Not enough data";
 }
 
 function renderJournal(){
@@ -445,16 +599,16 @@ function renderJournal(){
 }
 function recordPrediction(){
  if(!latestModel||latestModel.direction==="WAIT"||!candles.length){
-  $("journalStatus").textContent="No UP or DOWN signal right now. WAIT means no paper entry.";
+  $("journalStatus").textContent="No strong signal. WAIT means no entry.";
   return;
  }
- const current=candles.at(-1);
- if(journal.some(j=>j.time===current.time)){
-  $("journalStatus").textContent="Already recorded a prediction for this candle.";
+ const c=candles.at(-1);
+ if(journal.some(j=>j.time===c.time)){
+  $("journalStatus").textContent="Already recorded for this candle.";
   return;
  }
- journal.push({time:current.time,target:current.time+900000,direction:latestModel.direction,price:livePrice||current.close,result:null});
- localStorage.setItem("btcLabJournal2",JSON.stringify(journal));
+ journal.push({time:c.time,target:c.time+900000,direction:latestModel.direction,price:livePrice||c.close,result:null});
+ localStorage.setItem("btcLabJournal21",JSON.stringify(journal));
  renderJournal();
 }
 function settleJournal(data){
@@ -463,13 +617,13 @@ function settleJournal(data){
   if(j.result)continue;
   const next=data.find(c=>c.time===j.target);
   if(next){
-   const actual=next.close>next.open?"UP":next.close<next.open?"DOWN":"FLAT";
+   const actual=next.close>=next.open?"UP":"DOWN";
    j.result=actual===j.direction?"WIN":"LOSS";
    changed=true;
   }
  }
  if(changed){
-  localStorage.setItem("btcLabJournal2",JSON.stringify(journal));
+  localStorage.setItem("btcLabJournal21",JSON.stringify(journal));
   renderJournal();
  }
 }
@@ -478,10 +632,16 @@ $("backtestButton").addEventListener("click",runBacktest);
 $("recordButton").addEventListener("click",recordPrediction);
 renderJournal();
 
+activeRound=roundStart(nowServer());
+loadOpening(activeRound);
+
 async function start(){
  await syncServerTime();
+ activeRound=roundStart(nowServer());
+ loadOpening(activeRound);
  await Promise.all([refreshPrice(),refreshAnalysis(),refreshPolymarket()]);
  updateCountdown();
+ connectTwap();
 }
 start();
 
