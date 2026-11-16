@@ -6,7 +6,11 @@ on:
       - "scripts/model-core.js"
       - "scripts/test-model.mjs"
       - "scripts/test-index.mjs"
+      - "scripts/test-polybolt.mjs"
       - "scripts/record-checkpoints.mjs"
+      - "cloudflare/polybolt-relay.js"
+      - "cloudflare/wrangler.toml"
+      - "cloudflare/README.md"
       - ".github/workflows/checkpoint-recorder.yml"
   schedule:
     # Start five minutes before each 15-minute market boundary.
@@ -34,7 +38,9 @@ jobs:
           node --check scripts/model-core.js
           node --check scripts/test-model.mjs
           node --check scripts/test-index.mjs
+          node --check scripts/test-polybolt.mjs
           node --check scripts/record-checkpoints.mjs
+          node --check cloudflare/polybolt-relay.js
           node --check scripts/merge-rounds.mjs
 
       - name: Test probability calculations
@@ -42,6 +48,9 @@ jobs:
 
       - name: Test dashboard script and elements
         run: node scripts/test-index.mjs
+
+      - name: Test PolyBolt migration and secret separation
+        run: node scripts/test-polybolt.mjs
 
   record:
     if: github.event_name != 'push'
@@ -65,8 +74,10 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Verify the probability model
-        run: node scripts/test-model.mjs
+      - name: Verify the probability model and PolyBolt protocol
+        run: |
+          node scripts/test-model.mjs
+          node scripts/test-polybolt.mjs
 
       - name: Record six probability checkpoints and the settlement outcome
         run: node scripts/record-checkpoints.mjs
