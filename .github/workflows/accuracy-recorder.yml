@@ -18,9 +18,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
-      POLYMARKET_API_KEY: \${{ secrets.POLYMARKET_API_KEY }}
-      POLYMARKET_API_SECRET: \${{ secrets.POLYMARKET_API_SECRET }}
-      POLYMARKET_PASSPHRASE: \${{ secrets.POLYMARKET_PASSPHRASE }}
+      POLYMARKET_API_KEY: ${{ secrets.POLYMARKET_API_KEY }}
+      POLYMARKET_API_SECRET: ${{ secrets.POLYMARKET_API_SECRET }}
+      POLYMARKET_PASSPHRASE: ${{ secrets.POLYMARKET_PASSPHRASE }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
