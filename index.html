@@ -77,7 +77,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
  <div class="decision-action yellow" id="signal">NO TRADE</div>
  <div class="decision-reason" id="signalReason">Waiting for live market data and indicator confirmation.</div>
  <div class="decision-meta">
-  <div><span class="small">Model direction</span><strong id="decisionModel">--</strong></div>
+  <div><span class="small">Technical direction</span><strong id="decisionModel">--</strong></div>
   <div><span class="small">Technical score</span><strong id="decisionScore">--</strong></div>
   <div><span class="small">Timeframe agreement</span><strong id="decisionConfirm">--</strong></div>
   <div><span class="small">Chainlink price-to-beat</span><strong id="decisionBeat">--</strong></div>
@@ -160,7 +160,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
  <div><div class="small">Indicator agreement score</div><div class="big" id="modelScore">--</div></div>
  <div><div class="small">Signal quality</div><div class="big" id="strength">Waiting for indicators</div></div>
 </div>
-<div class="small">The score measures how strongly the rules agree. It is not a probability of winning. BUY signals are paper-only and require multiple filters.</div>
+<div class="small">The technical score is supporting evidence, not a win probability. The experimental settlement estimate uses a Student-t model, robust 1-minute volatility, recent Chainlink TWAP drift and time remaining. Paper BUY requires at least 64% estimated confidence plus technical support. The estimate is not yet calibrated.</div>
 </section>
 
 <section class="card">
@@ -855,7 +855,7 @@ async function refreshAutoTracker(){
    const correct=rows.filter(cp=>cp.result==="WIN"||cp.predictedDirection===cp.actualOutcome).length;
    return rows.length?(100*correct/rows.length).toFixed(1)+"%":"--";
   };
-  const noTrade=resolved.filter(cp=>cp.predictedDirection==="WAIT").length;
+  const noTrade=checkpoints.filter(cp=>cp.predictedDirection==="WAIT").length;
   const probabilityRows=resolved.filter(cp=>Number.isFinite(cp.probabilityUp));
   const brier=probabilityRows.length
    ?probabilityRows.reduce((sum,cp)=>sum+(cp.probabilityUp-(cp.actualOutcome==="UP"?1:0))**2,0)/probabilityRows.length
@@ -872,7 +872,7 @@ async function refreshAutoTracker(){
 
   const latestRound=rounds.slice().sort((a,b)=>b.roundStart-a.roundStart)[0];
   $("v4Status").textContent=latestRound
-   ?"V4 last saved "+new Date(latestRound.updatedAt||latestRound.checkpoints?.at(-1)?.predictedAt||latestRound.roundStart).toLocaleString()+" · six time checkpoints per round"
+   ?"V4 last saved "+new Date(latestRound.updatedAt||latestRound.checkpoints?.at(-1)?.predictedAt||latestRound.roundStart).toLocaleString()+" · "+(latestRound.feedMode||"TWAP feed") +" · six time checkpoints per round"
    :"Waiting for the first V4 probability checkpoints. Older model records stay separate.";
 
   const order=["m3","m5","m8","m10","m12","m13_5"];
