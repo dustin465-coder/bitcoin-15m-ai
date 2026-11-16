@@ -160,7 +160,29 @@ function draw(){
  x.beginPath();a.forEach((v,i)=>{let xx=10+i*(c.width-20)/(a.length-1),yy=c.height-12-(v.close-lo)/(hi-lo||1)*(c.height-25);if(i)x.lineTo(xx,yy);else x.moveTo(xx,yy)});
  x.strokeStyle="#79aaff";x.lineWidth=3;x.stroke();
 }
+
 async function getCandles(){
+  const url = "https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=900";
+
+  const r = await fetch(url);
+  if(!r.ok) throw Error("Coinbase HTTP " + r.status);
+
+  const data = await r.json();
+
+  if(!Array.isArray(data) || data.length < 30){
+    throw Error("Not enough Coinbase candle data");
+  }
+
+  return data.map(k => ({
+    time: Number(k[0]) * 1000,
+    low: Number(k[1]),
+    high: Number(k[2]),
+    open: Number(k[3]),
+    close: Number(k[4]),
+    volume: Number(k[5])
+  })).sort((a,b) => a.time-b.time);
+}
+ async function refresh()
   const url = "https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=900";
 
   const response = await fetch(url);
