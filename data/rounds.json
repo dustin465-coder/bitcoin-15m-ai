@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-16T10:46:48.698Z",
-  "schedule": "GitHub Actions scheduled before each 15-minute boundary",
+  "updatedAt": "2026-11-16T10:47:40.999Z",
+  "schedule": "GitHub Actions scheduled after each 15-minute boundary; predictions reconstructed as-of boundary",
   "rounds": [
     {
       "roundStart": 1794825900000,
