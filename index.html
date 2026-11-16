@@ -841,9 +841,10 @@ async function refreshAutoTracker(){
   $("autoDownAccuracy").textContent=sideStats("DOWN");
   $("autoNoTrade").textContent=noTrade;
   $("autoRecentAccuracy").textContent=recent.length?(100*recentWins/recent.length).toFixed(1)+"%":"--";
-  $("autoStatus").textContent=data.updatedAt
-   ?"V3 cloud recorder last updated "+new Date(data.updatedAt).toLocaleString()+" · fixed-time live-rule snapshot · your Mac can be off"
-   :"V3 cloud recorder is waiting for its first run";
+  const latestV3=rounds.slice().sort((a,b)=>b.roundStart-a.roundStart)[0];
+  $("autoStatus").textContent=latestV3
+   ?"V3 cloud snapshot last recorded "+new Date(latestV3.collectedAt||latestV3.predictedAt).toLocaleString()+" · your Mac can be off"
+   :"Waiting for the first V3 cloud snapshot. Older test records are kept separate.";
 
   const bands=[
    {label:"28–39",min:28,max:40},
