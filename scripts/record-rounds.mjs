@@ -156,17 +156,25 @@ function analyze(data, otherFrames) {
   if ((resistance - last.close) / range < 0.15 && last.close < last.open) score -= 8;
 
   let frameVotes = 0, frameCount = 0;
+  let upConfirmations = 0, downConfirmations = 0;
   for (const key of ["1m", "5m", "1h"]) {
-    if (otherFrames[key] === "UP") { frameVotes++; frameCount++; }
-    if (otherFrames[key] === "DOWN") { frameVotes--; frameCount++; }
+    if (otherFrames[key] === "UP") { frameVotes++; frameCount++; upConfirmations++; }
+    if (otherFrames[key] === "DOWN") { frameVotes--; frameCount++; downConfirmations++; }
   }
   if (frameCount) score += 14 * frameVotes / frameCount;
 
   const up = Math.max(5, Math.min(95, 50 + score / 2));
   const down = 100 - up;
   const direction = score >= 15 ? "UP" : score <= -15 ? "DOWN" : "WAIT";
+  const qualifiedSide = score > 0 ? "UP" : "DOWN";
+  const qualifiedVotes = qualifiedSide === "UP" ? upConfirmations : downConfirmations;
+  const signalAction = Math.abs(score) >= 28 && qualifiedVotes >= 2
+    ? (qualifiedSide === "UP" ? "BUY UP" : "BUY DOWN")
+    : "NO TRADE";
   return {
     direction,
+    signalAction,
+    timeframeConfirmations: qualifiedVotes,
     score: Number(score.toFixed(2)),
     upScore: Number(up.toFixed(2)),
     downScore: Number(down.toFixed(2)),
@@ -343,7 +351,10 @@ async function main() {
         collectedAt: new Date(serverNow()).toISOString(),
         captureDelaySeconds: Math.max(0, Math.round((serverNow() - roundStart) / 1000)),
         captureMethod: "scheduled snapshot using candles completed by round start",
-        predictedDirection: prediction.direction,
+        predictedDirection: prediction.signalAction === "BUY UP" ? "UP" : prediction.signalAction === "BUY DOWN" ? "DOWN" : "WAIT",
+        modelDirection: prediction.direction,
+        signalAction: prediction.signalAction,
+        timeframeConfirmations: prediction.timeframeConfirmations,
         upScore: prediction.upScore,
         downScore: prediction.downScore,
         modelScore: prediction.score,
