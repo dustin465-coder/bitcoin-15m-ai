@@ -1766,11 +1766,13 @@ async function updateKalshiAutoPreview(){
 }
 async function kalshiRunPreflight(){
  const el=document.getElementById("kalshiPreflightStatus");
- const ticker=document.getElementById("kalshiMarket")?.value;
  if(!el)return;
- if(!ticker){el.textContent="Choose an active BTC market first.";return;}
- el.textContent="Running read-only checks for "+ticker+"…";
+ el.textContent="Refreshing the active BTC market, then running read-only checks…";
  try{
+  await kalshiLoadMarkets();
+  const ticker=document.getElementById("kalshiMarket")?.value;
+  if(!ticker)throw new Error("No active BTC 15-minute market is available right now.");
+  el.textContent="Running read-only checks for "+ticker+"…";
   const r=await kalshiApi("preflight?ticker="+encodeURIComponent(ticker));
   const c=r.checks||{};
   const labels=[
@@ -1779,7 +1781,8 @@ async function kalshiRunPreflight(){
    ["bothAsksAvailable","Both UP/DOWN asks available"],
    ["noExistingPositionInSelectedMarket","No existing position in this market"],
    ["noRestingOrderInSelectedMarket","No resting order in this market"],
-   ["fillsEndpointReadable","Fills history readable"],
+   ["fillsEndpointReadable","Fills endpoint readable"],
+   ["dailyFillAuditComplete","Today's fills fully retrieved"],
    ["entryMappingValidated","Entry mapping logic tested (not live order)"],
    ["exitMappingValidated","Exit mapping logic tested (not live order)"],
    ["fillBasedLossControlValidated","Fill-based loss control validated"]
