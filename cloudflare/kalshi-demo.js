@@ -118,6 +118,10 @@ async function getRiskSnapshot(env) {
   if (!record) {
     record = { day: dayKey, startingEquity: equity, createdAt: new Date().toISOString() };
     await env.BOT_STATE.put(key, JSON.stringify(record));
+  } else if (!Number.isFinite(Number(record.startingEquity))) {
+    record.startingEquity = Number(record.startingBalance);
+    if (!Number.isFinite(record.startingEquity)) throw new Error("Saved daily risk baseline is invalid; automatic entries must remain disabled.");
+    await env.BOT_STATE.put(key, JSON.stringify(record));
   }
   const drawdown = Math.max(0, Number(record.startingEquity) - equity);
   const positionRows = positions.market_positions || [];
