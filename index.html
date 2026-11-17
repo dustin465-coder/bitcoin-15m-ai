@@ -366,6 +366,10 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 </div>
 <div class="small" id="kalshiAutoReason" style="margin-top:10px">Start the monitor to watch decisions. No orders will be sent in this stage.</div>
 <div class="small" id="kalshiAutoUpdated" style="margin-top:6px">Not started.</div>
+<div class="paper-stat" style="margin-top:10px">
+ <strong>SERVER-SIDE DEMO SAFETY CHECK</strong>
+ <div class="small" id="kalshiRiskStatus" style="margin-top:7px">Not checked. Deploy the updated Worker code and connect to Kalshi DEMO.</div>
+</div>
 </section>
 
 <section class="card" id="autoPaperCard">
@@ -1602,6 +1606,14 @@ async function updateKalshiAutoPreview(){
  updatedEl.textContent="Last check: "+new Date().toLocaleTimeString()+" · "+(ticker||"no market selected");
  kalshiAutoPreviewLastAction=action;
 }
+async function kalshiLoadRiskStatus(){
+ const el=document.getElementById("kalshiRiskStatus");
+ if(!el)return;
+ try{
+  const r=await kalshiApi("risk-status");
+  el.textContent="DEMO only · starting balance $"+r.startingBalance.toFixed(2)+" · current balance $"+r.currentBalance.toFixed(2)+" · balance drawdown $"+r.balanceDrawdown.toFixed(2)+" / $"+r.dailyLossLimit.toFixed(2)+" · open positions "+r.openPositionCount+" / "+r.maxOpenPositions+" · automatic orders DISABLED. "+r.note;
+ }catch(e){el.textContent="Safety check unavailable: "+e.message;}
+}
 function setupKalshiAutoPreview(){
  const button=document.getElementById("kalshiAutoPreviewToggle");
  button.addEventListener("click",()=>{
@@ -1642,6 +1654,7 @@ function setupKalshiDemo(){
 
 setupKalshiDemo();
 setupKalshiAutoPreview();
+setInterval(()=>{if(document.getElementById("kalshiConnectionState")?.textContent==="DEMO CONNECTED")kalshiLoadRiskStatus();},30000);
 setInterval(updateKalshiAutoPreview,5000);
 setInterval(()=>{if(document.getElementById("kalshiMarket").value)kalshiLoadLiveMarket();},5000);
 </script>
