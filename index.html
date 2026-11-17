@@ -322,6 +322,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
   <button id="kalshiLoadMarkets" type="button" class="paper-off">Find open BTC markets</button>
   <button id="kalshiLoadPositions" type="button" class="paper-off">Refresh positions</button>
   <button id="kalshiLoadOrders" type="button" class="paper-off">Refresh orders</button>
+  <button id="kalshiLoadFills" type="button" class="paper-off">Refresh fills</button>
  </div>
  <div style="margin-top:12px">
   <label class="small">Open Bitcoin market
@@ -348,6 +349,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
  </div>
  <div class="small" id="kalshiPositions" style="margin-top:12px;white-space:pre-wrap">Positions: not loaded.</div>
  <div class="small" id="kalshiOrders" style="margin-top:8px;white-space:pre-wrap">Orders: not loaded.</div>
+ <div class="small" id="kalshiFills" style="margin-top:8px;white-space:pre-wrap">Fills: not loaded.</div>
  <div class="small yellow" style="margin-top:12px">Safety limits: DEMO host is hard-coded in the Worker; exactly 1 contract per order; limit price must be $0.01–$0.99; each order requires a confirmation prompt. The existing paper bot does not send Kalshi orders automatically yet.</div>
 </section>
 
@@ -1562,6 +1564,15 @@ async function kalshiLoadPositions(){
   document.getElementById("kalshiPositions").textContent="DEMO positions ("+rows.length+"):\n"+(rows.length?rows.map(p=>(p.ticker||"Market")+" · position "+(p.position_fp??p.position??"--")+" · market value "+(p.market_value_dollars??p.market_value??"--")).join("\\n"):"No open positions.");
  }catch(e){document.getElementById("kalshiPositions").textContent="Positions: "+e.message;}
 }
+async function kalshiLoadFills(){
+ const el=document.getElementById("kalshiFills");
+ el.textContent="DEMO fills: loading…";
+ try{
+  const data=await kalshiApi("fills");
+  const rows=data.fills||[];
+  el.textContent="DEMO fills ("+rows.length+") · checked "+new Date().toLocaleTimeString()+"\n"+(rows.length?rows.slice(0,15).map(f=>(f.ticker||"Market")+" · "+(f.side||"")+" · count "+(f.count_fp??f.count??"--")+" · price "+(f.price_dollars??f.price??"--")+" · "+(f.created_time||"time unavailable")).join("\n"):"No fills returned.");
+ }catch(e){el.textContent="DEMO fills · failed "+new Date().toLocaleTimeString()+"\n"+e.message;}
+}
 async function kalshiLoadOrders(){
  const el=document.getElementById("kalshiOrders");
  el.textContent="DEMO orders: loading…";
@@ -1647,6 +1658,7 @@ function setupKalshiDemo(){
  document.getElementById("kalshiLoadMarkets").addEventListener("click",kalshiLoadMarkets);
  document.getElementById("kalshiLoadPositions").addEventListener("click",kalshiLoadPositions);
  document.getElementById("kalshiLoadOrders").addEventListener("click",kalshiLoadOrders);
+ document.getElementById("kalshiLoadFills").addEventListener("click",kalshiLoadFills);
  document.getElementById("kalshiMarket").addEventListener("change",kalshiLoadLiveMarket);
  document.getElementById("kalshiBuyYes").addEventListener("click",()=>kalshiPlaceOrder("bid"));
  document.getElementById("kalshiSellYes").addEventListener("click",()=>kalshiPlaceOrder("ask"));
