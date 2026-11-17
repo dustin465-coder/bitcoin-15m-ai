@@ -88,6 +88,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
  </div>
  <div class="decision-action yellow" id="signal">NO TRADE</div>
  <div class="decision-reason" id="signalReason">Waiting for live market data and indicator confirmation.</div>
+ <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><button id="soundToggle" type="button">Enable sound alerts</button><span class="small" id="soundStatus">Sound alerts off</span></div>
  <div class="small" style="margin-top:8px">Rapid mode: data refreshes throughout the round. New BUY suggestions can reappear after a 15-second cooldown when a fresh setup qualifies.</div>
 
  <div class="oracle-meter">
@@ -336,6 +337,9 @@ let openingReference=null;
 let openingTimestamp=null;
 let twapConnected=false;
 let marketQuotes=null;
+let soundEnabled=localStorage.getItem("btcSoundAlerts")==="on";
+let soundContext=null;
+let lastAnnouncedAction="";
 let journal=JSON.parse(localStorage.getItem("btcLabJournal21")||"[]");
 
 function nowServer(){return Date.now()+serverOffset}
@@ -818,6 +822,50 @@ function updateSignalQuality(){
  $("qualityBreakdown").textContent=parts.map(p=>p.name+": "+(p.score>0?"+":"")+p.score.toFixed(2)).join(" · ")+" · "+parts.length+" input groups";
 }
 
+function playSignalTone(kind){
+ if(!soundEnabled||!soundContext)return;
+ const now=soundContext.currentTime;
+ const notes=kind==="BUY"?[660,880]:[440,330];
+ notes.forEach((frequency,index)=>{
+  const osc=soundContext.createOscillator(), gain=soundContext.createGain();
+  osc.type="sine"; osc.frequency.setValueAtTime(frequency,now+index*0.22);
+  gain.gain.setValueAtTime(0.0001,now+index*0.22);
+  gain.gain.exponentialRampToValueAtTime(0.16,now+index*0.22+0.025);
+  gain.gain.exponentialRampToValueAtTime(0.0001,now+index*0.22+0.18);
+  osc.connect(gain); gain.connect(soundContext.destination);
+  osc.start(now+index*0.22); osc.stop(now+index*0.22+0.2);
+ });
+}
+function announceSignal(action){
+ const isBuy=action==="BUY UP"||action==="BUY DOWN";
+ const isSell=action==="CASH OUT UP"||action==="CASH OUT DOWN";
+ if(!isBuy&&!isSell){lastAnnouncedAction=action;return;}
+ if(action!==lastAnnouncedAction)playSignalTone(isBuy?"BUY":"SELL");
+ lastAnnouncedAction=action;
+}
+function setupSoundAlerts(){
+ const button=$("soundToggle"),status=$("soundStatus");
+ if(!button||!status)return;
+ const render=()=>{
+  button.textContent=soundEnabled?"Turn sound alerts off":"Enable sound alerts";
+  status.textContent=soundEnabled?"Sound alerts on · BUY and CASH OUT":"Sound alerts off";
+ };
+ button.addEventListener("click",async()=>{
+  if(soundEnabled){soundEnabled=false;localStorage.setItem("btcSoundAlerts","off");render();return;}
+  try{
+   const AudioCtor=window.AudioContext||window.webkitAudioContext;
+   if(!AudioCtor)throw Error("Audio is not supported in this browser");
+   soundContext=soundContext||new AudioCtor();
+   if(soundContext.state==="suspended")await soundContext.resume();
+   soundEnabled=true;localStorage.setItem("btcSoundAlerts","on");render();
+   playSignalTone("BUY");
+  }catch(e){status.textContent="Could not enable sound: "+e.message;}
+ });
+ if(soundEnabled){
+  button.textContent="Turn sound alerts off";
+  status.textContent="Sound alerts saved · tap if sound does not play";
+ }else render();
+}
 function updateDecision(){
  const card=$("decisionCard");
  if(!latestModel){
@@ -946,6 +994,7 @@ function updateDecision(){
   ?(liveProbability.confidence>=0.64?"Probability threshold met":"Below probability threshold")
   :"Waiting for probability estimate";
  updateSignalQuality();
+ announceSignal(action);
 }
 
 function showModel(a){
@@ -1209,6 +1258,7 @@ function settleJournal(data){
 $("backtestButton").addEventListener("click",runBacktest);
 $("recordButton").addEventListener("click",recordPrediction);
 renderJournal();
+setupSoundAlerts();
 refreshAutoTracker();
 setInterval(refreshAutoTracker,60000);
 
