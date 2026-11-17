@@ -1788,9 +1788,12 @@ async function updateKalshiAutoPreview(){
   kalshiAutoPreviewInFlight=false;
  }
 }
+let kalshiPreflightInFlight=false;
 async function kalshiRunPreflight(){
  const el=document.getElementById("kalshiPreflightStatus");
- if(!el)return;
+ if(!el||kalshiPreflightInFlight)return;
+ if(document.getElementById("kalshiConnectionState")?.textContent!=="DEMO CONNECTED")return;
+ kalshiPreflightInFlight=true;
  el.textContent="Refreshing the active BTC market, then running read-only checks…";
  try{
   await kalshiLoadMarkets();
@@ -1817,6 +1820,7 @@ async function kalshiRunPreflight(){
  }catch(e){
   el.textContent="Preflight unavailable: "+e.message+". If this says Unknown Kalshi demo endpoint, the updated Cloudflare Worker still needs to be deployed.";
  }
+ finally{kalshiPreflightInFlight=false;}
 }
 async function kalshiLoadRiskStatus(){
  const el=document.getElementById("kalshiRiskStatus");
@@ -1903,6 +1907,10 @@ function setupKalshiDemo(){
 
 setupKalshiDemo();
 setupKalshiAutoPreview();
+// Automatically refresh active BTC markets every 30 seconds while connected.
+setInterval(()=>{if(document.getElementById("kalshiConnectionState")?.textContent==="DEMO CONNECTED"&&!document.hidden)kalshiLoadMarkets();},30000);
+// Automatically rerun the read-only server preflight every 60 seconds. Never submits orders.
+setInterval(()=>{if(document.getElementById("kalshiConnectionState")?.textContent==="DEMO CONNECTED"&&!document.hidden)kalshiRunPreflight();},60000);
 setInterval(()=>{if(document.getElementById("kalshiConnectionState")?.textContent==="DEMO CONNECTED")kalshiLoadRiskStatus();},30000);
 setInterval(updateKalshiAutoPreview,5000);
 setInterval(()=>{if(document.getElementById("kalshiMarket").value)kalshiLoadLiveMarket();},5000);
