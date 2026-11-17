@@ -337,7 +337,8 @@ let openingReference=null;
 let openingTimestamp=null;
 let twapConnected=false;
 let marketQuotes=null;
-let soundEnabled=localStorage.getItem("btcSoundAlerts")==="on";
+// Audio permission does not survive a page reload in iOS Safari. Require a fresh tap each visit.
+let soundEnabled=false;
 let soundContext=null;
 let lastAnnouncedAction="";
 let journal=JSON.parse(localStorage.getItem("btcLabJournal21")||"[]");
@@ -848,23 +849,23 @@ function setupSoundAlerts(){
  if(!button||!status)return;
  const render=()=>{
   button.textContent=soundEnabled?"Turn sound alerts off":"Enable sound alerts";
-  status.textContent=soundEnabled?"Sound alerts on · BUY, EXIT WARNING and CASH OUT":"Sound alerts off";
+  status.textContent=soundEnabled
+   ?"Sound test passed · alerts active while this page is open"
+   :"Tap Enable sound alerts each time you open this page";
  };
  button.addEventListener("click",async()=>{
-  if(soundEnabled){soundEnabled=false;localStorage.setItem("btcSoundAlerts","off");render();return;}
+  if(soundEnabled){soundEnabled=false;render();return;}
   try{
    const AudioCtor=window.AudioContext||window.webkitAudioContext;
-   if(!AudioCtor)throw Error("Audio is not supported in this browser");
+   if(!AudioCtor)throw Error("This browser does not support Web Audio");
    soundContext=soundContext||new AudioCtor();
-   if(soundContext.state==="suspended")await soundContext.resume();
-   soundEnabled=true;localStorage.setItem("btcSoundAlerts","on");render();
+   if(soundContext.state!=="running")await soundContext.resume();
+   if(soundContext.state!=="running")throw Error("Browser has not allowed audio playback. Check silent mode and browser settings.");
+   soundEnabled=true;render();
    playSignalTone("BUY");
-  }catch(e){status.textContent="Could not enable sound: "+e.message;}
+  }catch(e){soundEnabled=false;status.textContent="Sound could not start: "+e.message;}
  });
- if(soundEnabled){
-  button.textContent="Turn sound alerts off";
-  status.textContent="Sound alerts saved · BUY, EXIT WARNING and CASH OUT";
- }else render();
+ render();
 }
 function updateDecision(){
  const card=$("decisionCard");
