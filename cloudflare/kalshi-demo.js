@@ -128,7 +128,7 @@ export async function handleKalshiRequest(request, env, url) {
     if (url.pathname === "/kalshi/markets" && request.method === "GET") {
       const limit = Math.max(1, Math.min(1000, Number(url.searchParams.get("limit") || 1000)));
       const status = url.searchParams.get("status") === "closed" ? "closed" : "open";
-      const query = new URLSearchParams({status, limit:String(limit)});
+      const query = new URLSearchParams({status, limit:String(limit), series_ticker:"KXBTC15M"});
       const response = await fetch(BASE + "/markets?" + query.toString(), {headers:{"Accept":"application/json"}});
       const data = await response.json();
       if (!response.ok) throw new Error("Kalshi market lookup failed: " + (data.message || response.status));
