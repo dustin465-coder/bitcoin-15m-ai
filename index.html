@@ -1498,11 +1498,13 @@ async function kalshiLoadPositions(){
  }catch(e){document.getElementById("kalshiPositions").textContent="Positions: "+e.message;}
 }
 async function kalshiLoadOrders(){
+ const el=document.getElementById("kalshiOrders");
+ el.textContent="DEMO orders: loading…";
  try{
   const data=await kalshiApi("orders");
   const rows=data.orders||[];
-  document.getElementById("kalshiOrders").textContent="DEMO orders ("+rows.length+"):\n"+(rows.length?rows.slice(0,12).map(o=>(o.ticker||"Market")+" · "+(o.side||"")+" · "+(o.count||o.remaining_count||"--")+" · "+(o.status||"")).join("\\n"):"No orders returned.");
- }catch(e){document.getElementById("kalshiOrders").textContent="Orders: "+e.message;}
+  el.textContent="DEMO orders ("+rows.length+") · checked "+new Date().toLocaleTimeString()+"\\n"+(rows.length?rows.slice(0,12).map(o=>(o.ticker||"Market")+" · "+(o.side||"")+" · "+(o.count||o.remaining_count||"--")+" · "+(o.status||"")).join("\\n"):"No orders returned.");
+ }catch(e){el.textContent="DEMO orders · failed "+new Date().toLocaleTimeString()+"\\n"+e.message;}
 }
 async function kalshiPlaceOrder(side){
  try{
