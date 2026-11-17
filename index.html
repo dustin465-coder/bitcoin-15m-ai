@@ -1494,14 +1494,14 @@ async function kalshiLoadPositions(){
  try{
   const data=await kalshiApi("positions");
   const rows=data.market_positions||data.positions||[];
-  document.getElementById("kalshiPositions").textContent="DEMO positions ("+rows.length+"):\\n"+(rows.length?rows.map(p=>(p.ticker||"Market")+" · position "+(p.position_fp??p.position??"--")+" · market value "+(p.market_value_dollars??p.market_value??"--")).join("\\n"):"No open positions.");
+  document.getElementById("kalshiPositions").textContent="DEMO positions ("+rows.length+"):\n"+(rows.length?rows.map(p=>(p.ticker||"Market")+" · position "+(p.position_fp??p.position??"--")+" · market value "+(p.market_value_dollars??p.market_value??"--")).join("\\n"):"No open positions.");
  }catch(e){document.getElementById("kalshiPositions").textContent="Positions: "+e.message;}
 }
 async function kalshiLoadOrders(){
  try{
   const data=await kalshiApi("orders");
   const rows=data.orders||[];
-  document.getElementById("kalshiOrders").textContent="DEMO orders ("+rows.length+"):\\n"+(rows.length?rows.slice(0,12).map(o=>(o.ticker||"Market")+" · "+(o.side||"")+" · "+(o.count||o.remaining_count||"--")+" · "+(o.status||"")).join("\\n"):"No orders returned.");
+  document.getElementById("kalshiOrders").textContent="DEMO orders ("+rows.length+"):\n"+(rows.length?rows.slice(0,12).map(o=>(o.ticker||"Market")+" · "+(o.side||"")+" · "+(o.count||o.remaining_count||"--")+" · "+(o.status||"")).join("\\n"):"No orders returned.");
  }catch(e){document.getElementById("kalshiOrders").textContent="Orders: "+e.message;}
 }
 async function kalshiPlaceOrder(side){
