@@ -5,15 +5,15 @@
 *{box-sizing:border-box}body{margin:0;padding:16px;background:var(--bg);color:#edf3f4;font:15px Inter,system-ui,-apple-system,Segoe UI,sans-serif}main{max-width:1080px;margin:auto}h1{font-size:clamp(25px,4vw,36px);margin:0 0 5px;letter-spacing:-.7px}h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#c3d0d3;margin:0 0 14px}.sub,.muted{color:var(--muted);font-size:13px;line-height:1.5}.top{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}.pill{border:1px solid var(--line);border-radius:99px;padding:6px 10px;font-size:12px;color:var(--muted)}.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:17px;margin:13px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:10px}.metric{background:#132029;border:1px solid var(--line);border-radius:12px;padding:13px;min-width:0}.label{font-size:11px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;margin-bottom:7px}.value{font-size:clamp(21px,3vw,29px);font-weight:750;letter-spacing:-.5px;overflow-wrap:anywhere}.gold{color:var(--gold)}.green{color:var(--green)}.red{color:var(--red)}.yellow{color:var(--yellow)}.decision{padding:22px;border:1px solid #59686d;border-radius:18px;background:linear-gradient(135deg,#202f36,#18252d);margin:14px 0}.decision.buyup{border-color:#2e9274;background:linear-gradient(135deg,#15392f,#182a2c)}.decision.buydown{border-color:#a34e59;background:linear-gradient(135deg,#3b242a,#29232a)}.decision h2{margin:0 0 8px}.signal{font-size:clamp(28px,5vw,42px);font-weight:850;letter-spacing:-1px}.bar{height:9px;background:#33434a;border-radius:20px;overflow:hidden}.bar>i{display:block;height:100%;background:var(--gold);width:0}.row{display:flex;justify-content:space-between;gap:12px;margin:9px 0;font-size:13px}.status{color:var(--gold)}a{color:var(--gold)}button{border:1px solid var(--line);background:#24343d;color:#edf3f4;border-radius:10px;padding:10px 13px;font-weight:650}input{width:100%;background:#101820;border:1px solid var(--line);border-radius:8px;padding:10px;color:#edf3f4}.warning{border-left:3px solid var(--yellow);padding:10px 12px;background:#222b2d;border-radius:7px;font-size:12px;color:#cbd5d7;line-height:1.5}.table{width:100%;border-collapse:collapse;font-size:13px}.table td,.table th{text-align:left;padding:9px 6px;border-bottom:1px solid var(--line)}.table th{color:var(--muted);font-weight:600}.chart{height:150px;width:100%;display:block}.foot{font-size:11px;color:var(--muted);line-height:1.5}
 </style></head><body><main>
 <div class="top"><div><h1><span class="gold">GOLD</span> AI LAB</h1><div class="sub">XAU/USD · Polymarket 15-minute Up/Down decision assistant</div></div><span class="pill" id="feedStatus">FEED NOT CONNECTED</span></div>
-<div class="warning" style="margin-top:14px">Experimental research tool. It does not place trades and does not know whether you own a position. Gold market settlement uses the Chainlink XAU/USD price stream, not a generic gold chart. Only Chainlink-sourced samples are accepted.</div>
+<div class="warning" style="margin-top:14px">Experimental research dashboard. Polymarket's Gold 15-minute markets resolve against Chainlink XAU/USD Data Streams. This free page uses an independent public spot-price proxy, so it is NOT the official settlement feed and it will never issue a BUY signal.</div>
 <div class="grid" style="margin-top:14px">
-<div class="metric"><div class="label">Gold spot price</div><div class="value gold" id="price">Waiting…</div><div class="muted" id="priceTime">No live sample</div></div>
+<div class="metric"><div class="label">Public gold spot price</div><div class="value gold" id="price">Waiting…</div><div class="muted" id="priceTime">No live sample</div></div>
 <div class="metric"><div class="label">Price to beat</div><div class="value" id="strike">—</div><div class="muted" id="gap">Waiting for round opening</div></div>
 <div class="metric"><div class="label">Time remaining</div><div class="value" id="countdown">--:--</div><div class="muted" id="roundLabel">15-minute round</div></div>
 <div class="metric"><div class="label">Market status</div><div class="value" id="marketStatus">—</div><div class="muted" id="source">Public XAU/USD spot proxy</div></div>
 </div>
 <div class="decision" id="decision"><h2>Current decision</h2><div class="signal" id="signal">WAITING FOR DATA</div><div class="sub" id="reason">Waiting for public XAU/USD spot data to begin analysis.</div><div class="grid" style="margin-top:15px"><div><div class="label">Model UP estimate</div><div class="value" id="upProb">—</div></div><div><div class="label">Model DOWN estimate</div><div class="value" id="downProb">—</div></div><div><div class="label">Signal quality</div><div class="value" id="quality">—</div></div></div></div>
-<div class="card"><h2>Gold price movement</h2><canvas id="chart" class="chart"></canvas><div class="muted">Recent Chainlink XAU/USD observations. The line is not a settlement forecast.</div></div>
+<div class="card"><h2>Gold price movement</h2><canvas id="chart" class="chart"></canvas><div class="muted">Recent public spot-price observations. This chart is not Chainlink settlement data.</div></div>
 <div class="card"><h2>Technical indicators</h2><div class="grid">
 <div class="metric"><div class="label">RSI (14)</div><div class="value" id="rsi">—</div><div class="muted" id="rsiNote">Need more samples</div></div>
 <div class="metric"><div class="label">EMA 9 / 21</div><div class="value" id="ema">—</div><div class="muted" id="emaNote">Trend</div></div>
@@ -22,26 +22,180 @@
 </div></div>
 <div class="card"><h2>Polymarket gold market</h2><div class="grid"><div class="metric"><div class="label">UP best ask</div><div class="value" id="upAsk">—</div></div><div class="metric"><div class="label">DOWN best ask</div><div class="value" id="downAsk">—</div></div><div class="metric"><div class="label">Current market</div><div class="value" id="marketLink">Searching…</div></div></div><div class="muted" id="marketNote">Market prices are separate from the model estimate.</div></div>
 <div class="card"><h2>Recent signal history</h2><table class="table"><thead><tr><th>Time</th><th>Price</th><th>Signal</th><th>UP model</th></tr></thead><tbody id="history"><tr><td colspan="4" class="muted">No signals recorded yet.</td></tr></tbody></table></div>
-<div class="card"><h2>Automatic public gold data</h2><div class="row"><span>Spot-price feed</span><strong id="spotFeed">Connecting…</strong></div><div class="row"><span>Historical intraday feed</span><strong id="historyFeed">Loading…</strong></div><div class="muted">No Cloudflare Worker or Polymarket credentials required. Public XAU/USD data is indicative and is not the Chainlink settlement feed used by Polymarket.</div></div>
-<div class="foot">Model is experimental and uncalibrated. Its percentages are estimates, not proven win probabilities. The public XAU/USD spot proxy can differ from Chainlink and is cached about 60 seconds. Opening prices are locally sampled, not official Chainlink market strike values. Treat all signals as experimental research only. This page stores recent observations locally in this browser only.</div>
+<div class="card"><h2>Free public gold data</h2><div class="row"><span>Spot-price feed</span><strong id="spotFeed">Checking…</strong></div><div class="row"><span>Local observation history</span><strong id="historyFeed">Building…</strong></div><div class="muted">No Cloudflare Worker, paid Chainlink subscription, or Polymarket credentials are required for this approximation. Public spot data is indicative and differs from Polymarket's Chainlink settlement stream.</div></div>
+<div class="foot">Important: this dashboard is a spot-market research tool, not a settlement-matched trading signal. Polymarket's Gold market names Chainlink XAU/USD Data Streams as its resolution source. The free spot feed is independent and may differ in price, timing and market hours. We deliberately disable BUY/SELL recommendations and show NO TRADE until the exact settlement feed can be verified. Model estimates are not calibrated win probabilities. Data observations are stored locally in this browser.</div>
 </main>
 <script>
-const $=id=>document.getElementById(id);
-const ROUND=900000,MIN_CONF=.64;
-let ws=null,prices=[],last=null,opening=null,market=null,tokenIds=[],signalState="NONE",lastSignalAt=0,lastMarketFetch=0;
-const key="goldAiLabSamplesV1";
-try{prices=JSON.parse(localStorage.getItem(key)||"[]").filter(x=>Date.now()-x.t<86400000)}catch{}
-function fmt(v){return Number.isFinite(v)?v.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}):"—"}
-function roundStart(t=Date.now()){return Math.floor(t/ROUND)*ROUND}
-function updateClock(){const now=Date.now(),start=roundStart(now),end=start+ROUND,left=Math.max(0,end-now);$("countdown").textContent=String(Math.floor(left/60000)).padStart(2,"0")+":"+String(Math.floor(left%60000/1000)).padStart(2,"0");$("roundLabel").textContent=new Date(start).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})+" – "+new Date(end).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});if(opening&&opening.round!==start){opening=null;signalState="NONE";$("strike").textContent="Waiting…";}if(opening){$("strike").textContent="$"+fmt(opening.p);const d=(last.p-opening.p);$("gap").textContent=(d>=0?"+":"")+fmt(d)+" ("+(d/opening.p*100).toFixed(3)+"%)";}}
-function median(a){if(!a.length)return 0;const s=[...a].sort((x,y)=>x-y),m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2}
-function ema(a,n){if(a.length<n)return null;let v=a.slice(0,n).reduce((x,y)=>x+y,0)/n,k=2/(n+1);for(let i=n;i<a.length;i++)v=a[i]*k+(1-k)*v;return v}
-function indicators(){const rows=prices.filter(x=>Date.now()-x.t<10*60000);const vals=rows.map(x=>x.p);if(vals.length<15)return null;const deltas=vals.slice(1).map((v,i)=>v-vals[i]);let gains=deltas.slice(-14).filter(x=>x>0).reduce((a,b)=>a+b,0)/14,losses=-deltas.slice(-14).filter(x=>x<0).reduce((a,b)=>a+b,0)/14;const rsi=losses===0?100:100-100/(1+gains/losses),e9=ema(vals.slice(-60),9),e21=ema(vals.slice(-60),21),recent=rows.filter(x=>Date.now()-x.t<60000),mom=recent.length>1?(recent.at(-1).p/recent[0].p-1)*100:0,rets=vals.slice(1).map((v,i)=>Math.log(v/vals[i])*10000),sig=median(rets.map(x=>Math.abs(x-median(rets))))*1.4826;return{rsi,e9,e21,mom,sig,n:vals.length}}
-function renderChart(){const c=$("chart"),ctx=c.getContext("2d"),w=c.clientWidth,h=c.clientHeight,dpr=devicePixelRatio||1;c.width=w*dpr;c.height=h*dpr;ctx.scale(dpr,dpr);ctx.clearRect(0,0,w,h);const a=prices.slice(-180);if(a.length<2)return;const lo=Math.min(...a.map(x=>x.p)),hi=Math.max(...a.map(x=>x.p)),span=hi-lo||1;ctx.strokeStyle="#f1c76b";ctx.lineWidth=2;ctx.beginPath();a.forEach((x,i)=>{const px=i/(a.length-1)*w,py=h-8-(x.p-lo)/span*(h-16);i?ctx.lineTo(px,py):ctx.moveTo(px,py)});ctx.stroke()}
-function updateAnalysis(){if(!last||!opening){$("signal").textContent="WAITING FOR OPEN";$("reason").textContent="Need a fresh public XAU/USD price and the round opening sample.";return}const x=indicators(),now=Date.now(),left=opening.round+ROUND-now;if(!x){$("signal").textContent="COLLECTING DATA";$("reason").textContent="Need more live observations before calculating indicators.";return}
-$("rsi").textContent=x.rsi.toFixed(1);$("rsiNote").textContent=x.rsi<30?"Oversold":x.rsi>70?"Overbought":"Neutral";$("ema").textContent=x.e9&&x.e21?(x.e9>x.e21?"BULLISH":"BEARISH"):"—";$("emaNote").textContent=x.e9&&x.e21?"9 EMA vs 21 EMA":"Not enough samples";$("momentum").textContent=(x.mom>=0?"+":"")+x.mom.toFixed(3)+"%";$("volatility").textContent=x.sig.toFixed(2)+" bps";
-const gap=(last.p-opening.p)/opening.p*10000;const sigma=Math.max(.15,x.sig||.15);const drift=Math.max(-sigma*.2,Math.min(sigma*.2,x.mom*10000*.25));const z=(gap+drift*Math.max(0,left/60000))/(sigma*Math.sqrt(Math.max(.25,left/60000))*1.18);const logistic=1/(1+Math.exp(-Math.max(-8,Math.min(8,z*1.25))));const up=left<=0?(gap>=0?1:0):logistic,down=1-up;const trend=(x.e9&&x.e21?(x.e9>x.e21?1:-1):0)+(x.mom>0.002?1:x.mom<-.002?-1:0)+(x.rsi>52?1:x.rsi<48?-1:0);const lean=trend>0?"UP":trend<0?"DOWN":"MIXED";const agreement=Math.round(Math.abs(trend)/3*100);$("upProb").textContent=(up*100).toFixed(1)+"%";$("downProb").textContent=(down*100).toFixed(1)+"%";$("quality").textContent=lean+" · "+agreement+"%";let sig="NO TRADE",why="Model confidence or technical confirmation is insufficient.";if(left>60000&&now-opening.round>=180000){if(up>=MIN_CONF&&trend>=2){sig="BUY UP";why="Model favors UP and short-term indicators agree."}else if(down>=MIN_CONF&&trend<=-2){sig="BUY DOWN";why="Model favors DOWN and short-term indicators agree."}else if(signalState==="BUY UP"&&up>.53)sig="HOLD UP";else if(signalState==="BUY DOWN"&&down>.53)sig="HOLD DOWN";}if(left<=60000){sig=signalState==="BUY UP"?"CASH OUT UP":signalState==="BUY DOWN"?"CASH OUT DOWN":"NO TRADE";why="Final minute: avoid new entries and respect settlement timing."}if(sig.startsWith("BUY")){signalState=sig;lastSignalAt=now}if(sig.startsWith("CASH"))signalState="NONE";$("decision").className="decision "+(sig==="BUY UP"?"buyup":sig==="BUY DOWN"?"buydown":"");$("signal").textContent=sig;$("reason").textContent=why+" Model output is experimental, not calibrated.";if(sig!== "NO TRADE"&&sig!=="WAITING FOR OPEN"&&now-lastSignalAt<1000){const row=document.createElement("tr");row.innerHTML="<td>"+new Date().toLocaleTimeString()+"</td><td>$"+fmt(last.p)+"</td><td>"+sig+"</td><td>"+(up*100).toFixed(1)+"%</td>";$("history").prepend(row);while($("history").children.length>20)$("history").lastChild.remove()}}
-function accept(payload){const p=Number(payload.full_accuracy_value??payload.value),t=Number(payload.timestamp??Date.now()),source=String(payload.source||"").toLowerCase();if(!Number.isFinite(p)||p<=0)return;if(source!=="chainlink"){$("feedDetail").textContent="Rejected price sample: provider is "+(source||"unknown")+", not Chainlink.";return}if(payload.isCarriedForward||payload.marketStatus==="closed"){$("marketStatus").textContent="CLOSED / CARRIED";return}if(t<Date.now()-30000||t>Date.now()+5000){$("feedDetail").textContent="Rejected stale or future Chainlink sample.";return}last={p,t};prices.push({p,t});prices=prices.filter(x=>Date.now()-x.t<86400000).slice(-12000);localStorage.setItem(key,JSON.stringify(prices));const r=roundStart();if(!opening||opening.round!==r){if(t>=r&&t<r+30000)opening={p,round:r,t};}if(!opening&&t>=r&&t<r+30000)opening={p,round:r,t};$("price").textContent="$"+fmt(p);$("priceTime").textContent="XAUS spot · "+new Date(t).toLocaleTimeString();$("marketStatus").textContent=payload.marketStatus||"LIVE";$("source").textContent="Source: XAUS indicative XAU/USD spot";$("feedStatus").textContent="PUBLIC GOLD FEED LIVE";$("feedStatus").style.color="#5bddb0";updateClock();updateAnalysis();renderChart()}
-async function refreshGold(){try{const r=await fetch("https://xaus.com/api/v1/spot?currency=USD&unit=oz&compact=1",{cache:"no-store"});if(!r.ok)throw new Error("Gold spot API HTTP "+r.status);const d=await r.json();const p=Number(d.xau?.price??d.spot_usd_oz);const t=Date.parse(d.data_state?.as_of||d.updated_at||"");if(!Number.isFinite(p)||p<=0||!Number.isFinite(t))throw new Error("Gold API returned invalid price or timestamp");const age=(Date.now()-t)/1000;if(age>180){$("spotFeed").textContent="STALE · "+Math.round(age)+"s";$("feedStatus").textContent="STALE GOLD DATA";return}last={p,t};prices.push({p,t});prices=prices.filter(x=>Date.now()-x.t<86400000).slice(-12000);localStorage.setItem(key,JSON.stringify(prices));const rStart=roundStart();if(!opening||opening.round!==rStart){if(t>=rStart&&t<rStart+120000)opening={p,round:rStart,t};}if(!opening&&t>=rStart&&t<rStart+120000)opening={p,round:rStart,t};$("price").textContent="$"+fmt(p);$("priceTime").textContent="XAUS spot · "+new Date(t).toLocaleTimeString()+" · "+Math.round(age)+"s old";$("spotFeed").textContent="LIVE / "+Math.round(age)+"s old";$("feedStatus").textContent="PUBLIC GOLD FEED LIVE";$("feedStatus").style.color="#5bddb0";$("source").textContent="Source: XAUS indicative XAU/USD spot";$("marketStatus").textContent="SPOT PROXY";updateClock();updateAnalysis();renderChart()}catch(e){$("spotFeed").textContent="ERROR";$("feedStatus").textContent="DATA UNAVAILABLE";}}
-async function refreshIntraday(){try{const r=await fetch("https://xaus.com/api/v1/intraday?symbol=xau&hours=12",{cache:"no-store"});if(!r.ok)throw new Error("Intraday API HTTP "+r.status);const d=await r.json();const points=(d.points||[]).map(x=>({t:Number(x.t)*1000,p:Number(x.p)})).filter(x=>Number.isFinite(x.t)&&Number.isFinite(x.p)&&x.p>0);if(points.length){const known=new Set(prices.map(x=>x.t));for(const x of points)if(!known.has(x.t))prices.push(x);prices=prices.sort((a,b)=>a.t-b.t).slice(-12000);localStorage.setItem(key,JSON.stringify(prices));$("historyFeed").textContent=points.length+" points · 2-minute sampling";renderChart();updateAnalysis()}else $("historyFeed").textContent="No intraday history yet"}catch(e){$("historyFeed").textContent="Unavailable"}}setInterval(updateClock,1000);refreshGold();refreshIntraday();refreshMarket();setInterval(refreshGold,60000);setInterval(refreshIntraday,300000);setInterval(refreshMarket,15000);setInterval(()=>{if(last&&Date.now()-last.t>30000){$("feedStatus").textContent="STALE FEED";$("feedStatus").style.color="#ff8b8b";$("signal").textContent="NO TRADE";$("reason").textContent="Gold spot data is stale. No signal.";}} ,3000);window.addEventListener("resize",renderChart);updateClock();renderChart();
+"use strict";
+const $ = id => document.getElementById(id);
+const ROUND_MS = 15 * 60 * 1000;
+const MIN_CONF = 0.64;
+const SPOT_URL = "https://xaus.com/api/v1/spot?currency=USD&unit=oz&compact=1";
+let samples = [], last = null, marketInfo = null, refreshBusy = false;
+const storageKey = "goldAiLabPublicSpotV2";
+try {
+  const saved = JSON.parse(localStorage.getItem(storageKey) || "[]");
+  samples = Array.isArray(saved) ? saved.filter(x => Number.isFinite(x.t) && Number.isFinite(x.p) && Date.now() - x.t < 86400000) : [];
+} catch (_) { samples = []; }
+
+function fmt(v) {
+  return Number.isFinite(v) ? v.toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2}) : "—";
+}
+function currentRoundStart(t = Date.now()) { return Math.floor(t / ROUND_MS) * ROUND_MS; }
+function setText(id, value) { const el = $(id); if (el) el.textContent = value; }
+function setFeedStatus(label, good = false) {
+  setText("feedStatus", label);
+  const el = $("feedStatus");
+  if (el) el.style.color = good ? "#5bddb0" : "#f4ca75";
+}
+function updateClock() {
+  const now = Date.now(), start = currentRoundStart(now), left = start + ROUND_MS - now;
+  setText("countdown", String(Math.floor(left/60000)).padStart(2,"0") + ":" + String(Math.floor(left%60000/1000)).padStart(2,"0"));
+  setText("roundLabel", new Date(start).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}) + " – " + new Date(start+ROUND_MS).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}));
+  setText("strike", "Not available");
+  setText("gap", "Official Chainlink strike not exposed by this free feed");
+}
+function median(a) {
+  if (!a.length) return 0;
+  const s = [...a].sort((x,y)=>x-y), m = Math.floor(s.length/2);
+  return s.length%2 ? s[m] : (s[m-1]+s[m])/2;
+}
+function ema(a,n) {
+  if (a.length < n) return null;
+  let v = a.slice(0,n).reduce((x,y)=>x+y,0)/n, k = 2/(n+1);
+  for (let i=n;i<a.length;i++) v = a[i]*k + v*(1-k);
+  return v;
+}
+function indicators() {
+  const rows = samples.filter(x => Date.now()-x.t < 30*60000);
+  const vals = rows.map(x=>x.p);
+  if (vals.length < 4) return null;
+  const deltas = vals.slice(1).map((v,i)=>v-vals[i]);
+  const gains = deltas.filter(x=>x>0).reduce((a,b)=>a+b,0) / Math.max(1,deltas.length);
+  const losses = -deltas.filter(x=>x<0).reduce((a,b)=>a+b,0) / Math.max(1,deltas.length);
+  const rsi = losses === 0 ? 100 : 100-100/(1+gains/losses);
+  const e9 = ema(vals, Math.min(9, vals.length));
+  const e21 = vals.length >= 21 ? ema(vals,21) : null;
+  const recent = rows.filter(x=>Date.now()-x.t<5*60000);
+  const mom = recent.length>1 ? (recent[recent.length-1].p/recent[0].p-1)*100 : 0;
+  const rets = vals.slice(1).map((v,i)=>Math.log(v/vals[i])*10000);
+  const center = median(rets);
+  const vol = median(rets.map(x=>Math.abs(x-center)))*1.4826;
+  return {rsi,e9,e21,mom,vol,count:vals.length};
+}
+function drawChart() {
+  const c=$("chart"); if(!c) return;
+  const ctx=c.getContext("2d"), w=c.clientWidth, h=c.clientHeight, dpr=window.devicePixelRatio||1;
+  c.width=Math.max(1,w*dpr); c.height=Math.max(1,h*dpr); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+  const a=samples.slice(-180); if(a.length<2) return;
+  const lo=Math.min(...a.map(x=>x.p)), hi=Math.max(...a.map(x=>x.p)), span=hi-lo||1;
+  ctx.strokeStyle="#f1c76b"; ctx.lineWidth=2; ctx.beginPath();
+  a.forEach((x,i)=>{const px=i/(a.length-1)*w, py=h-8-(x.p-lo)/span*(h-16); if(i)ctx.lineTo(px,py);else ctx.moveTo(px,py);});
+  ctx.stroke();
+}
+function renderIndicators() {
+  const x=indicators();
+  if(!x) {
+    setText("rsi","—"); setText("ema","—"); setText("momentum","—"); setText("volatility","—");
+    setText("signal","COLLECTING DATA"); setText("reason","Waiting for enough timestamped spot-price observations. This is not the settlement feed.");
+    setText("upProb","—"); setText("downProb","—"); setText("quality","—");
+    return;
+  }
+  setText("rsi",x.rsi.toFixed(1)); setText("rsiNote",x.rsi<30?"Oversold":x.rsi>70?"Overbought":"Neutral");
+  setText("ema",x.e21===null?"BUILDING":x.e9>x.e21?"BULLISH":"BEARISH");
+  setText("emaNote",x.e21===null?"Need 21 observations":"Local spot trend only");
+  setText("momentum",(x.mom>=0?"+":"")+x.mom.toFixed(3)+"%");
+  setText("volatility",x.vol.toFixed(2)+" bps");
+  const trend=(x.e21!==null?(x.e9>x.e21?1:-1):0)+(x.mom>0.005?1:x.mom<-.005?-1:0)+(x.rsi>53?1:x.rsi<47?-1:0);
+  const up=Math.max(0,Math.min(1,0.5+trend*0.08));
+  setText("upProb",(up*100).toFixed(1)+"%"); setText("downProb",((1-up)*100).toFixed(1)+"%");
+  setText("quality",trend>0?"UP BIAS":trend<0?"DOWN BIAS":"MIXED");
+  $("decision").className="decision";
+  setText("signal","NO TRADE");
+  setText("reason","Directional indicators are based on public spot gold, not Polymarket's Chainlink XAU/USD settlement stream. Research bias only; no buy signal is enabled.");
+}
+async function refreshGold() {
+  if(refreshBusy) return; refreshBusy=true;
+  try {
+    const response=await fetch(SPOT_URL,{cache:"no-store"});
+    if(!response.ok) throw new Error("Gold price service returned HTTP "+response.status);
+    const d=await response.json();
+    const p=Number(d.xau?.price ?? d.spot_usd_oz);
+    const stamp=d.price_as_of || d.data_state?.as_of || d.updated_at;
+    const t=Date.parse(stamp);
+    const age=Number(d.data_state?.age_seconds);
+    const stale=Boolean(d.stale) || d.data_state?.status==="stale" || (Number.isFinite(age)&&age>120) || !Number.isFinite(t) || Date.now()-t>120000 || t>Date.now()+10000;
+    if(!Number.isFinite(p)||p<=0||stale) throw new Error("Gold price is missing or older than 2 minutes");
+    last={p,t};
+    const existing=samples.findIndex(x=>x.t===t);
+    if(existing>=0) samples[existing]={p,t}; else samples.push({p,t});
+    samples=samples.filter(x=>Date.now()-x.t<86400000).sort((a,b)=>a.t-b.t).slice(-1500);
+    try { localStorage.setItem(storageKey,JSON.stringify(samples)); } catch (_) {}
+    setText("price","$"+fmt(p));
+    setText("priceTime","XAUS indicative spot · "+new Date(t).toLocaleTimeString()+" · "+Math.max(0,Math.round((Date.now()-t)/1000))+"s old");
+    setText("spotFeed","LIVE · timestamp checked");
+    setText("source","XAUS public XAU/USD spot (not settlement)");
+    setText("marketStatus","SPOT PROXY");
+    setFeedStatus("PUBLIC SPOT LIVE · NOT SETTLEMENT",true);
+    renderIndicators(); drawChart();
+  } catch(e) {
+    setText("spotFeed","ERROR · "+e.message);
+    setFeedStatus("DATA UNAVAILABLE · NO TRADE",false);
+    setText("signal","NO TRADE");
+    setText("reason","Live gold data failed freshness checks. No signal will be shown.");
+  } finally { refreshBusy=false; }
+}
+function parseMaybeJSON(v) {
+  if(Array.isArray(v)) return v;
+  if(typeof v==="string") { try { return JSON.parse(v); } catch (_) {} }
+  return [];
+}
+async function refreshMarket() {
+  try {
+    const start=Math.floor(currentRoundStart()/1000);
+    const slug="xau-updown-15m-"+start;
+    const r=await fetch("https://gamma-api.polymarket.com/events?slug="+encodeURIComponent(slug),{cache:"no-store"});
+    if(!r.ok) throw new Error("Polymarket market lookup HTTP "+r.status);
+    const events=await r.json();
+    const ev=Array.isArray(events)?events[0]:null;
+    const m=ev && Array.isArray(ev.markets)?ev.markets[0]:null;
+    if(!m) throw new Error("Current Gold 15m market not found");
+    const ids=parseMaybeJSON(m.clobTokenIds), outcomes=parseMaybeJSON(m.outcomes);
+    let upId=null,downId=null;
+    outcomes.forEach((o,i)=>{if(String(o).toLowerCase()==="up")upId=ids[i];if(String(o).toLowerCase()==="down")downId=ids[i];});
+    if(!upId||!downId) throw new Error("Market outcome tokens unavailable");
+    const [ub,db]=await Promise.all([
+      fetch("https://clob.polymarket.com/book?token_id="+encodeURIComponent(upId),{cache:"no-store"}),
+      fetch("https://clob.polymarket.com/book?token_id="+encodeURIComponent(downId),{cache:"no-store"})
+    ]);
+    if(!ub.ok||!db.ok) throw new Error("Order book unavailable");
+    const [u,d]=await Promise.all([ub.json(),db.json()]);
+    const bestAsk=b=>Array.isArray(b.asks)&&b.asks.length?Math.min(...b.asks.map(x=>Number(x.price)).filter(Number.isFinite)):null;
+    const ua=bestAsk(u), da=bestAsk(d);
+    setText("upAsk",ua===null?"—":(ua*100).toFixed(1)+"¢");
+    setText("downAsk",da===null?"—":(da*100).toFixed(1)+"¢");
+    setText("marketLink","LIVE");
+    const link=$("marketNote");
+    if(link) link.innerHTML='Current market: <a href="https://polymarket.com/event/'+slug+'" target="_blank" rel="noopener">Open Gold 15-minute market</a>. Quotes are the current public order book, not predictions.';
+    setText("marketStatus","MARKET FOUND");
+  } catch(e) {
+    setText("upAsk","—"); setText("downAsk","—"); setText("marketLink","Unavailable");
+    setText("marketNote","Could not verify the current Polymarket market/order book: "+e.message);
+  }
+}
+function init() {
+  setText("source","XAUS public XAU/USD spot (not settlement)");
+  setText("historyFeed","Using local timestamped samples");
+  setText("marketStatus","Checking…");
+  setText("signal","NO TRADE");
+  setText("reason","This free dashboard uses indicative spot gold. It does not have Polymarket's authenticated Chainlink Data Stream.");
+  updateClock(); drawChart();
+  refreshGold(); refreshMarket();
+  setInterval(updateClock,1000);
+  setInterval(refreshGold,60000);
+  setInterval(refreshMarket,15000);
+  setInterval(()=>{if(!last||Date.now()-last.t>120000){setFeedStatus("STALE · NO TRADE",false);setText("signal","NO TRADE");setText("reason","Gold price is stale. No signal will be shown.");}},5000);
+  window.addEventListener("resize",drawChart);
+}
+init();
 </script></body></html>
