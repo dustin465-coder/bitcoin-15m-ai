@@ -60,6 +60,12 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 .oracle-foot{font-size:12px;color:#9db0b5;line-height:1.5;margin-top:10px}
 .oracle-confidence{display:inline-flex;padding:5px 9px;border-radius:99px;background:#263940;color:#c6d6d8;font-size:11px;font-weight:750}
 
+
+.paper-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;margin:14px 0}
+.paper-stat{background:#101b22;border:1px solid #30434b;border-radius:12px;padding:12px}
+.paper-stat strong{display:block;font-size:21px;margin-top:5px}
+.paper-controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.paper-on{background:#246d56}.paper-off{background:#53636a}
 </style>
 </head>
 <body>
@@ -286,6 +292,33 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 <div style="overflow-x:auto;margin-top:12px">
 <table><thead><tr><th>Round (UTC)</th><th>Checkpoint</th><th>Paper action</th><th>Estimate</th><th>Outcome</th><th>Result</th><th>Reason</th></tr></thead>
 <tbody id="latestCheckpointRows"><tr><td colspan="7">No V4 checkpoint results yet.</td></tr></tbody></table>
+</div>
+</section>
+
+<section class="card" id="autoPaperCard">
+<h2>AUTOMATIC DEMO BOT · KALSHI-STYLE PAPER TRADING</h2>
+<div class="small">Simulation only. No Kalshi connection, no orders, and no real money. It automatically follows BUY and CASH OUT signals from this dashboard. Each simulated contract is assumed to cost 50¢; this is a fixed test assumption, not a live Kalshi quote. Fees and slippage are excluded.</div>
+<div class="paper-controls" style="margin-top:12px">
+<button id="paperBotToggle" class="paper-off" type="button">Start demo bot</button>
+<button id="paperBotReset" type="button">Reset demo account</button>
+<span class="pill" id="paperBotState">BOT OFF</span>
+</div>
+<div class="paper-grid">
+<div class="paper-stat"><span class="small">Demo balance</span><strong id="paperBalance">$100.00</strong></div>
+<div class="paper-stat"><span class="small">Realized demo P&amp;L</span><strong id="paperPnl">$0.00</strong></div>
+<div class="paper-stat"><span class="small">Closed trades</span><strong id="paperTrades">0</strong></div>
+<div class="paper-stat"><span class="small">Win rate</span><strong id="paperWinRate">--</strong></div>
+</div>
+<div class="paper-grid">
+<div class="paper-stat"><span class="small">Current position</span><strong id="paperPosition">None</strong></div>
+<div class="paper-stat"><span class="small">Contracts</span><strong id="paperContracts">--</strong></div>
+<div class="paper-stat"><span class="small">Entry cost</span><strong id="paperEntryCost">--</strong></div>
+<div class="paper-stat"><span class="small">Unrealized demo P&amp;L</span><strong id="paperUnrealized">--</strong></div>
+</div>
+<div class="small" id="paperBotMessage">Bot is off. Start it to automatically simulate qualified BUY signals. It uses $10 per trade, one open position at a time, and a 50¢ assumed entry.</div>
+<div style="overflow-x:auto;margin-top:12px">
+<table><thead><tr><th>Time</th><th>Side</th><th>Contracts</th><th>Entry</th><th>Exit</th><th>Net P&amp;L</th><th>Exit type</th></tr></thead>
+<tbody id="paperBotJournal"><tr><td colspan="7">No demo trades yet.</td></tr></tbody></table>
 </div>
 </section>
 
@@ -1004,6 +1037,7 @@ function updateDecision(){
   ?(liveProbability.confidence>=0.64?"Probability threshold met":"Below probability threshold")
   :"Waiting for probability estimate";
  updateSignalQuality();
+ processPaperBot(action);
  announceSignal(action);
 }
 
@@ -1226,6 +1260,76 @@ async function refreshAutoTracker(){
   $("v4Status").textContent="Checkpoint accuracy data is not available yet: "+e.message;
  }
 }
+
+const PAPER_BOT_KEY="btcKalshiDemoBot_v1";
+function loadPaperBot(){
+ try{const saved=JSON.parse(localStorage.getItem(PAPER_BOT_KEY)||"null");return saved&&typeof saved==="object"?{enabled:!!saved.enabled,bankroll:Number.isFinite(saved.bankroll)?saved.bankroll:100,startingBankroll:100,position:saved.position||null,trades:Array.isArray(saved.trades)?saved.trades:[]}: {enabled:false,bankroll:100,startingBankroll:100,position:null,trades:[]};}
+ catch(e){return {enabled:false,bankroll:100,startingBankroll:100,position:null,trades:[]};}
+}
+let paperBot=loadPaperBot();
+const PAPER_TRADE_BUDGET=10, PAPER_ENTRY_PRICE=0.50;
+function savePaperBot(){localStorage.setItem(PAPER_BOT_KEY,JSON.stringify(paperBot));renderPaperBot();}
+function closePaperPosition(exitPrice,exitType,detail){
+ const p=paperBot.position;if(!p)return;
+ const proceeds=p.contracts*Math.max(0,Math.min(1,exitPrice));
+ const pnl=proceeds-p.cost;paperBot.bankroll+=proceeds;
+ paperBot.trades.push({time:nowServer(),side:p.side,contracts:p.contracts,entry:p.entryPrice,exit:exitPrice,pnl,exitType,round:p.round,detail:detail||""});
+ paperBot.trades=paperBot.trades.slice(-50);paperBot.position=null;
+}
+function settlePaperAtRoundBoundary(){
+ const p=paperBot.position;if(!p||p.round===activeRound||!Number.isFinite(p.lastTwap)||!Number.isFinite(p.openingReference))return;
+ const actualUp=p.lastTwap>=p.openingReference;
+ const won=p.side==="UP"?actualUp:!actualUp;
+ closePaperPosition(won?1:0,"SETTLEMENT",won?"Correct simulated direction":"Incorrect simulated direction");
+ savePaperBot();
+}
+function processPaperBot(action){
+ if(!paperBot.enabled)return;
+ if(paperBot.position){
+  paperBot.position.lastTwap=Number.isFinite(twapValue)?twapValue:paperBot.position.lastTwap;
+  if(action==="CASH OUT "+paperBot.position.side){
+   const p=liveProbability&&liveProbability.valid?(paperBot.position.side==="UP"?liveProbability.probabilityUp:liveProbability.probabilityDown):null;
+   if(Number.isFinite(p)){closePaperPosition(p,"MODEL EXIT","Exit valued at model estimate, not an executable market quote.");savePaperBot();}
+  }else{savePaperBot();}
+  return;
+ }
+ if(action!=="BUY UP"&&action!=="BUY DOWN")return;
+ if(!Number.isFinite(openingReference)||!Number.isFinite(twapValue)||activeRound<=0)return;
+ const contracts=Math.floor(PAPER_TRADE_BUDGET/PAPER_ENTRY_PRICE);
+ if(paperBot.bankroll<PAPER_TRADE_BUDGET){$("paperBotMessage").textContent="Insufficient demo balance for another $10 simulated position.";return;}
+ const side=action==="BUY UP"?"UP":"DOWN";
+ paperBot.bankroll-=PAPER_TRADE_BUDGET;
+ paperBot.position={side,round:activeRound,contracts,entryPrice:PAPER_ENTRY_PRICE,cost:contracts*PAPER_ENTRY_PRICE,openedAt:nowServer(),openingReference,lastTwap:twapValue};
+ $("paperBotMessage").textContent="Automatically opened "+side+" demo position: "+contracts+" contracts at assumed 50¢ each. No real order was placed.";
+ savePaperBot();
+}
+function renderPaperBot(){
+ const el=id=>$(id);if(!el("paperBotToggle"))return;
+ el("paperBotToggle").textContent=paperBot.enabled?"Pause demo bot":"Start demo bot";
+ el("paperBotToggle").className=paperBot.enabled?"paper-on":"paper-off";
+ el("paperBotState").textContent=paperBot.enabled?"BOT RUNNING · SIMULATION ONLY":"BOT OFF";
+ el("paperBalance").textContent=money(paperBot.bankroll);
+ const closed=paperBot.trades;const pnl=closed.reduce((n,t)=>n+t.pnl,0);
+ el("paperPnl").textContent=(pnl>=0?"+":"")+money(pnl);
+ el("paperPnl").className=pnl>=0?"green":"red";
+ el("paperTrades").textContent=closed.length;
+ const wins=closed.filter(t=>t.pnl>0).length;
+ el("paperWinRate").textContent=closed.length?pct(wins/closed.length):"--";
+ const p=paperBot.position;
+ el("paperPosition").textContent=p?p.side:"None";
+ el("paperContracts").textContent=p?p.contracts:"--";
+ el("paperEntryCost").textContent=p?money(p.cost):"--";
+ const mark=p&&liveProbability&&liveProbability.valid?(p.side==="UP"?liveProbability.probabilityUp:liveProbability.probabilityDown):null;
+ const unrealized=p&&Number.isFinite(mark)?p.contracts*mark-p.cost:null;
+ el("paperUnrealized").textContent=unrealized===null?"--":(unrealized>=0?"+":"")+money(unrealized);
+ el("paperBotJournal").innerHTML=closed.slice().reverse().map(t=>"<tr><td>"+new Date(t.time).toLocaleTimeString()+"</td><td>"+t.side+"</td><td>"+t.contracts+"</td><td>"+money(t.entry)+"</td><td>"+money(t.exit)+"</td><td class='"+(t.pnl>=0?"green":"red")+"'>"+(t.pnl>=0?"+":"")+money(t.pnl)+"</td><td>"+t.exitType+"</td></tr>").join("")||'<tr><td colspan="7">No demo trades yet.</td></tr>';
+}
+function setupPaperBot(){
+ $("paperBotToggle").addEventListener("click",()=>{paperBot.enabled=!paperBot.enabled;savePaperBot();$("paperBotMessage").textContent=paperBot.enabled?"Demo bot running. It will simulate future BUY and CASH OUT signals only; it will not retroactively enter an existing signal.":"Demo bot paused. Any open simulated position remains open and can still settle when the round ends.";});
+ $("paperBotReset").addEventListener("click",()=>{if(!confirm("Reset the demo account to $100 and erase its simulated trade history?"))return;paperBot={enabled:false,bankroll:100,startingBankroll:100,position:null,trades:[]};savePaperBot();$("paperBotMessage").textContent="Demo account reset to $100. Bot is off.";});
+ renderPaperBot();
+}
+
 function renderJournal(){
  $("journal").innerHTML=journal.slice().reverse().map(j=>
   "<tr><td>"+new Date(j.time).toLocaleTimeString()+"</td><td>"+j.direction+
@@ -1269,6 +1373,7 @@ $("backtestButton").addEventListener("click",runBacktest);
 $("recordButton").addEventListener("click",recordPrediction);
 renderJournal();
 setupSoundAlerts();
+setupPaperBot();
 refreshAutoTracker();
 setInterval(refreshAutoTracker,60000);
 
