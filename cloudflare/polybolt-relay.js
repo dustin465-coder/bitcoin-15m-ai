@@ -140,12 +140,12 @@ export default {
 
       if (message.op === "subscribed") {
         if (message.rid && message.rid !== SUBSCRIBE_RID) return;
-        if (message.channel && message.channel !== TWAP_CHANNEL) return;
+        if (message.channel && message.channel !== (isGold ? "price.equity" : "price.crypto.twap")) return;
         isSubscribed = true;
         clearTimeout(subscriptionTimer);
         status(server, "subscribed");
         sampleTimer = setTimeout(() => {
-          if (!gotSample) fail("first_twap_sample_timeout");
+          if (!gotSample) fail("first_reference_price_timeout");
         }, 15000);
         return;
       }
