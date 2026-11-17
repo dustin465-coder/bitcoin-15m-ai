@@ -328,6 +328,7 @@ let twapSamples=[];
 let liveProbability=null;
 let twapSocket=null;
 let twapReconnectTimer=null;
+let twapHeartbeatTimer=null;
 let twapValue=null;
 let twapTimestamp=0;
 let activeRound=0;
@@ -465,6 +466,7 @@ function handleTwapSample(sample,format="legacy"){
 function connectTwap(){
  try{
   if(twapReconnectTimer){clearTimeout(twapReconnectTimer);twapReconnectTimer=null;}
+  if(twapHeartbeatTimer){clearInterval(twapHeartbeatTimer);twapHeartbeatTimer=null;}
   if(twapSocket&&twapSocket.readyState<WebSocket.CLOSING)twapSocket.close();
 
   const relayUrl=POLYBOLT_RELAY_URL.trim();
@@ -488,10 +490,17 @@ function connectTwap(){
      action:"subscribe",
      subscriptions:[{
       topic:"crypto_prices_twap_sixty",
-      type:"*",
+      type:"update",
       filters:'{"symbol":"btc/usd"}'
      }]
     }));
+    // RTDS requires a text PING heartbeat every 5 seconds. Without it,
+    // a quiet/stale socket can remain open but stop delivering updates.
+    twapHeartbeatTimer=setInterval(()=>{
+     if(twapSocket&&twapSocket.readyState===WebSocket.OPEN){
+      try{twapSocket.send("PING");}catch(e){$("twapStatus").textContent="RTDS heartbeat failed · reconnecting...";}
+     }
+    },5000);
    }
   };
 
@@ -539,11 +548,13 @@ function connectTwap(){
 
   twapSocket.onclose=()=>{
    twapConnected=false;
+   if(twapHeartbeatTimer){clearInterval(twapHeartbeatTimer);twapHeartbeatTimer=null;}
    $("twapStatus").textContent="TWAP stream disconnected · reconnecting...";
    $("twapStatus").className="small yellow";
    twapReconnectTimer=setTimeout(connectTwap,5000);
   };
  }catch(e){
+  if(twapHeartbeatTimer){clearInterval(twapHeartbeatTimer);twapHeartbeatTimer=null;}
   $("twapStatus").textContent="Could not start Chainlink stream: "+e.message;
   $("twapStatus").className="small red";
   twapReconnectTimer=setTimeout(connectTwap,5000);
