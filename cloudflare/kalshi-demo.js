@@ -101,12 +101,50 @@ function dollarsFromPortfolioValue(balance) {
   if (balance && balance.portfolio_value != null) return Number(balance.portfolio_value) / 100;
   throw new Error("Kalshi portfolio value is missing; refusing to estimate account equity.");
 }
+async function getTodayFillAudit(env) {
+  // Pull every fill since UTC midnight. This is an audit trail, not a homemade
+  // realized-P&L calculation; equity drawdown remains the authoritative loss stop.
+  const start = new Date();
+  start.setUTCHours(0, 0, 0, 0);
+  const minTs = Math.floor(start.getTime() / 1000);
+  let cursor = "";
+  const fills = [];
+  const seenCursors = new Set();
+  for (let page = 0; page < 10; page++) {
+    const params = new URLSearchParams({limit:"1000", min_ts:String(minTs)});
+    if (cursor) params.set("cursor", cursor);
+    const data = await signedKalshiRequest(env, "GET", "/portfolio/fills?" + params.toString());
+    if (!Array.isArray(data.fills)) throw new Error("Kalshi fills response was missing its fills list.");
+    fills.push(...data.fills);
+    const next = String(data.cursor || "");
+    if (!next) {
+      const fees = fills.reduce((sum, f) => sum + Number(f.fee_cost || 0), 0);
+      if (!Number.isFinite(fees)) throw new Error("Fill fee data was invalid.");
+      const ids = fills.map(f => f.fill_id || f.trade_id).filter(Boolean);
+      if (ids.length !== fills.length) throw new Error("One or more fills lacked a unique fill ID; refusing to trust the fill audit.");
+      return {
+        complete: true,
+        utcDayStart: start.toISOString(),
+        fillCount: fills.length,
+        feeCostDollars: Number(fees.toFixed(4)),
+        lastFillTime: fills.reduce((latest, f) => !latest || String(f.created_time || "") > latest ? String(f.created_time || "") : latest, ""),
+        uniqueFillCount: new Set(ids).size
+      };
+    }
+    if (seenCursors.has(next)) throw new Error("Kalshi fills pagination repeated a cursor; fill audit incomplete.");
+    seenCursors.add(next);
+    cursor = next;
+  }
+  throw new Error("More than 10 pages of today's fills; refusing to treat an incomplete fill audit as safe.");
+}
+
 async function getRiskSnapshot(env) {
   if (!env.BOT_STATE) throw new Error("The BOT_STATE KV binding is missing. Add it in Worker Settings > Bindings.");
-  const [balance, positions, orders] = await Promise.all([
+  const [balance, positions, orders, fillAudit] = await Promise.all([
     signedKalshiRequest(env, "GET", "/portfolio/balance"),
     signedKalshiRequest(env, "GET", "/portfolio/positions?limit=1000"),
     signedKalshiRequest(env, "GET", "/portfolio/orders?limit=200"),
+    getTodayFillAudit(env),
   ]);
   const cash = dollarsFromBalance(balance);
   const portfolioValue = dollarsFromPortfolioValue(balance);
@@ -141,10 +179,13 @@ async function getRiskSnapshot(env) {
     maxOpenPositions: 1,
     openPositionCount: openPositions.length,
     restingOrderCount: restingOrders.length,
+    dailyFillAudit: fillAudit,
+    dailyLossMeasure: "account equity drawdown from the first risk snapshot recorded for this UTC day; includes realized and marked portfolio value changes",
     riskLimitReached: drawdown >= 5,
-    entryAllowed: drawdown < 5 && openPositions.length === 0 && restingOrders.length === 0,
+    fillAuditComplete: fillAudit.complete === true,
+    entryAllowed: drawdown < 5 && openPositions.length === 0 && restingOrders.length === 0 && fillAudit.complete === true,
     tradingEnabled: false,
-    note: "Read-only safety precheck. Equity includes cash plus Kalshi portfolio value; it is not a substitute for verified fill-by-fill realized P&L. Automatic order execution remains disabled.",
+    note: "Daily loss stop uses account equity drawdown (cash plus portfolio value) from the first risk snapshot recorded each UTC day. Today's fills and fees are independently audited with complete pagination; fill audit failure blocks entries. This is not yet a verified fill-by-fill realized P&L ledger. Automatic order execution remains disabled.",
   };
 }
 
