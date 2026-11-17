@@ -171,6 +171,77 @@ export async function handleKalshiRequest(request, env, url) {
   }
 
   try {
+    if (url.pathname === "/kalshi/preflight" && request.method === "GET") {
+      // Read-only readiness check. This route never creates, changes, or cancels orders.
+      const ticker = String(url.searchParams.get("ticker") || "").trim();
+      if (!/^[A-Z0-9_-]{3,80}$/.test(ticker)) throw new Error("Choose a valid BTC 15-minute market ticker.");
+      const [marketResponse, positions, orders, fills] = await Promise.all([
+        fetch(BASE + "/markets/" + encodeURIComponent(ticker), {headers:{"Accept":"application/json"}}),
+        signedKalshiRequest(env, "GET", "/portfolio/positions?limit=1000&count_filter=position&ticker=" + encodeURIComponent(ticker)),
+        signedKalshiRequest(env, "GET", "/portfolio/orders?limit=200"),
+        signedKalshiRequest(env, "GET", "/portfolio/fills?limit=100"),
+      ]);
+      const marketData = await marketResponse.json();
+      if (!marketResponse.ok) throw new Error("Could not verify selected market: " + (marketData.message || marketResponse.status));
+      const market = marketData.market || marketData;
+      const status = String(market.status || "").toLowerCase();
+      const closeMs = market.close_time ? Date.parse(market.close_time) : NaN;
+      const active = ["open","active"].includes(status) && Number.isFinite(closeMs) && closeMs > Date.now();
+      const quote = (dollars, cents) => {
+        if (dollars !== null && dollars !== undefined && dollars !== "") {
+          const n = Number(dollars);
+          if (Number.isFinite(n) && n > 0 && n < 1) return n;
+        }
+        if (cents !== null && cents !== undefined && cents !== "") {
+          const n = Number(cents) / 100;
+          if (Number.isFinite(n) && n > 0 && n < 1) return n;
+        }
+        return null;
+      };
+      const yesAsk = quote(market.yes_ask_dollars, market.yes_ask);
+      const noAsk = quote(market.no_ask_dollars, market.no_ask);
+      const positionRows = positions.market_positions || [];
+      const selectedPositions = positionRows.filter(p => p.ticker === ticker && Math.abs(Number(p.position_fp ?? 0)) > 0);
+      const orderRows = orders.orders || [];
+      const restingOrders = orderRows.filter(o =>
+        o.ticker === ticker &&
+        ["resting","pending","open"].includes(String(o.status || "").toLowerCase()) &&
+        Number(o.remaining_count_fp ?? o.remaining_count ?? 0) > 0
+      );
+      const fillRows = fills.fills || [];
+      const checks = {
+        demoEnvironment: true,
+        marketActive: active,
+        bothAsksAvailable: yesAsk !== null && noAsk !== null,
+        noExistingPositionInSelectedMarket: selectedPositions.length === 0,
+        noRestingOrderInSelectedMarket: restingOrders.length === 0,
+        fillsEndpointReadable: Array.isArray(fillRows),
+        entryMappingValidated: false,
+        exitMappingValidated: false,
+        fillBasedLossControlValidated: false,
+        orderSubmissionEnabled: false
+      };
+      const passed = Object.values(checks).filter(Boolean).length;
+      return json({
+        environment:"DEMO",
+        readOnly:true,
+        ticker,
+        marketStatus:market.status || "unknown",
+        closeTime:market.close_time || null,
+        yesAskDollars:yesAsk,
+        noAskDollars:noAsk,
+        selectedPositionCount:selectedPositions.length,
+        selectedPositions,
+        selectedRestingOrderCount:restingOrders.length,
+        recentFillCount:fillRows.length,
+        checks,
+        passedChecks:passed,
+        totalChecks:Object.keys(checks).length,
+        readyToSubmit:false,
+        note:"Read-only preflight only. Kalshi V2 order side bid means buy YES; ask means sell YES (economically equivalent to buying NO). Entry/exit mapping and fill-based loss controls still require a controlled, supervised validation. No order was sent."
+      }, 200, allowedOrigin);
+    }
+
     if (url.pathname === "/kalshi/risk-status" && request.method === "GET") {
       const risk = await getRiskSnapshot(env);
       return json(risk, 200, allowedOrigin);
