@@ -99,7 +99,7 @@ function dollarsFromBalance(balance) {
 function dollarsFromPortfolioValue(balance) {
   if (balance && balance.portfolio_value_dollars != null) return Number(balance.portfolio_value_dollars);
   if (balance && balance.portfolio_value != null) return Number(balance.portfolio_value) / 100;
-  return 0;
+  throw new Error("Kalshi portfolio value is missing; refusing to estimate account equity.");
 }
 async function getRiskSnapshot(env) {
   if (!env.BOT_STATE) throw new Error("The BOT_STATE KV binding is missing. Add it in Worker Settings > Bindings.");
@@ -221,7 +221,13 @@ export async function handleKalshiRequest(request, env, url) {
       return json({environment:"DEMO", ...data}, 200, allowedOrigin);
     }
 
+    if (url.pathname === "/kalshi/fills" && request.method === "GET") {
+      const data = await signedKalshiRequest(env, "GET", "/portfolio/fills?limit=100");
+      return json({environment:"DEMO", ...data}, 200, allowedOrigin);
+    }
+
     if (url.pathname === "/kalshi/order" && request.method === "POST") {
+      return json({error:"Order execution is temporarily locked while position-aware entry/exit mapping and fill-based loss controls are being validated. No order was sent."}, 423, allowedOrigin);
       const input = await request.json();
       const ticker = String(input.ticker || "").trim();
       const side = String(input.side || "");
