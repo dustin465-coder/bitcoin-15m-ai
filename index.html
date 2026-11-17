@@ -1542,26 +1542,43 @@ async function kalshiLoadMarkets(){
   const data=await kalshiApi("markets?status=open&limit=1000");
   const select=document.getElementById("kalshiMarket");
   const previous=select.value;
-  select.innerHTML="";
   const now=Date.now();
   const markets=(data.markets||[]).filter(m=>{
    const status=String(m.status||"").toLowerCase();
    const close=m.close_time?Date.parse(m.close_time):NaN;
    return ["open","active"].includes(status) && Number.isFinite(close) && close>now;
   }).sort((a,b)=>Date.parse(a.close_time)-Date.parse(b.close_time));
+  select.innerHTML="";
   if(!markets.length){
-   select.add(new Option("No currently active 15-minute BTC markets",""));
-   kalshiSetMessage("No active, unexpired 15-minute BTC markets were returned. No orders can be placed.",true);
+   select.add(new Option("No currently active 15-minute BTC markets","");
+   select.value="";
+   kalshiSetMessage("No active, unexpired 15-minute BTC markets are available right now. Monitoring will keep checking.",true);
+   kalshiLastMarketRefresh=Date.now();
    await kalshiLoadLiveMarket();
    return;
   }
   select.add(new Option("Choose a current Bitcoin market",""));
   markets.forEach(m=>select.add(new Option((m.title||m.ticker)+" · "+m.ticker,m.ticker)));
-  if(markets.some(m=>m.ticker===previous))select.value=previous;
-  else select.value=markets[0].ticker;
-  kalshiSetMessage("Loaded "+markets.length+" active, unexpired 15-minute BTC market(s).");
+  const kept=markets.some(m=>m.ticker===previous);
+  select.value=kept?previous:markets[0].ticker;
+  kalshiLastMarketRefresh=Date.now();
+  if(!kept)kalshiSetMessage("Automatically selected the next active BTC 15-minute market: "+select.value+".");
+  else kalshiSetMessage("Found "+markets.length+" active, unexpired BTC 15-minute market(s).");
   await kalshiLoadLiveMarket();
- }catch(e){kalshiSetMessage(e.message,true);}
+ }catch(e){kalshiSetMessage("Market refresh failed: "+e.message,true);}
+}
+function kalshiQuoteDollars(m,dollarField,centsField){
+ const raw=m?.[dollarField];
+ if(raw!==null&&raw!==undefined&&raw!==""){
+  const n=Number(raw);
+  if(Number.isFinite(n)&&n>0&&n<1)return n;
+ }
+ const cents=m?.[centsField];
+ if(cents!==null&&cents!==undefined&&cents!==""){
+  const n=Number(cents)/100;
+  if(Number.isFinite(n)&&n>0&&n<1)return n;
+ }
+ return null;
 }
 async function kalshiLoadLiveMarket(){
  const ticker=document.getElementById("kalshiMarket").value;
@@ -1569,20 +1586,25 @@ async function kalshiLoadLiveMarket(){
  const upBid=document.getElementById("kalshiLiveUpBid"), downBid=document.getElementById("kalshiLiveDownBid");
  const meta=document.getElementById("kalshiLiveMeta");
  const buy=document.getElementById("kalshiBuyYes"), sell=document.getElementById("kalshiSellYes");
- if(!ticker){up.textContent="--";down.textContent="--";upBid.textContent="Bid: --";downBid.textContent="Bid: --";meta.textContent="Choose a market to load live prices.";buy.disabled=true;sell.disabled=true;return;}
+ if(!ticker){up.textContent="--";down.textContent="--";upBid.textContent="Bid: --";downBid.textContent="Bid: --";meta.textContent="Waiting for the next active BTC market.";buy.disabled=true;sell.disabled=true;return;}
  buy.disabled=true;sell.disabled=true;
  try{
   const data=await kalshiApi("market?ticker="+encodeURIComponent(ticker));
   const m=data.market||{};
   const status=String(m.status||"").toLowerCase();
   const closeMs=m.close_time?Date.parse(m.close_time):NaN;
-  const tradable=["open","active"].includes(status)&&Number.isFinite(closeMs)&&closeMs>Date.now();
-  const fmt=v=>{const n=Number(v);return Number.isFinite(n)?"$"+n.toFixed(4):"--";};
-  up.textContent=fmt(m.yes_ask_dollars); down.textContent=fmt(m.no_ask_dollars);
-  upBid.textContent="Bid: "+fmt(m.yes_bid_dollars); downBid.textContent="Bid: "+fmt(m.no_bid_dollars);
+  const live=["open","active"].includes(status)&&Number.isFinite(closeMs)&&closeMs>Date.now();
+  const yesAsk=kalshiQuoteDollars(m,"yes_ask_dollars","yes_ask");
+  const noAsk=kalshiQuoteDollars(m,"no_ask_dollars","no_ask");
+  const yesBid=kalshiQuoteDollars(m,"yes_bid_dollars","yes_bid");
+  const noBid=kalshiQuoteDollars(m,"no_bid_dollars","no_bid");
+  const fmt=v=>v===null?"--":"$"+v.toFixed(4);
+  up.textContent=live?fmt(yesAsk):"--"; down.textContent=live?fmt(noAsk):"--";
+  upBid.textContent="Bid: "+(live?fmt(yesBid):"--"); downBid.textContent="Bid: "+(live?fmt(noBid):"--");
   const close=m.close_time?new Date(m.close_time).toLocaleTimeString():"not supplied";
-  meta.textContent="Market: "+ticker+" · status: "+(m.status||"unknown")+" · closes: "+close+" · updated: "+new Date().toLocaleTimeString()+(tradable?" · trading enabled":" · NOT TRADABLE — market is finalized, closed, or expired");
-  buy.disabled=!tradable;sell.disabled=!tradable;
+  const quoteOk=live&&yesAsk!==null&&noAsk!==null;
+  meta.textContent="Market: "+ticker+" · status: "+(m.status||"unknown")+" · closes: "+close+" · updated: "+new Date().toLocaleTimeString()+(quoteOk?" · both live asks verified":live?" · waiting for both live asks":" · market closed/expired");
+  buy.disabled=!quoteOk;sell.disabled=!quoteOk;
  }catch(e){meta.textContent="Live price error: "+e.message;buy.disabled=true;sell.disabled=true;}
 }
 async function kalshiLoadPositions(){
@@ -1617,6 +1639,8 @@ let kalshiAutoCheckCount=0;
 let kalshiAutoHistory=[];
 let kalshiAutoLastHistoryKey="";
 let kalshiAutoLastHistoryAt=0;
+let kalshiLastMarketRefresh=0;
+let kalshiAutoPreviewInFlight=false;
 let kalshiShadowTrades=JSON.parse(localStorage.getItem("kalshiShadowTradesV1")||"[]");
 let kalshiSignalEvents=JSON.parse(localStorage.getItem("kalshiSignalEventsV1")||"[]");
 function kalshiSaveShadowTrades(){localStorage.setItem("kalshiShadowTradesV1",JSON.stringify(kalshiShadowTrades));}
@@ -1680,47 +1704,60 @@ function kalshiRecordDecision(action,ticker,score,up,down,reason){
  document.getElementById("kalshiAutoHistory").textContent=kalshiAutoHistory.join("\n");
 }
 async function updateKalshiAutoPreview(){
- if(!kalshiAutoPreviewEnabled)return;
- const get=id=>document.getElementById(id);
- const action=(get("signal")?.textContent||"NO TRADE").trim();
- const ticker=get("kalshiMarket").value;
- const side=action==="BUY UP"?"UP":action==="BUY DOWN"?"DOWN":null;
- const score=latestModel&&Number.isFinite(Number(latestModel.score))?Number(latestModel.score):null;
- const confidence=score===null?"--":Math.round(Math.min(95,Math.max(5,50+Math.abs(score)/2)))+"% directional estimate";
- get("kalshiAutoDecision").textContent=action;
- get("kalshiAutoSide").textContent=side||"--";
- get("kalshiAutoConfidence").textContent=confidence;
- get("kalshiAutoChecks").textContent=String(++kalshiAutoCheckCount);
- const modelReason=(get("signalReason")?.textContent||"The model has not supplied a reason yet.").trim();
- let up="--",down="--",quoteReason="Market quote not checked.";
+ if(!kalshiAutoPreviewEnabled||kalshiAutoPreviewInFlight)return;
+ kalshiAutoPreviewInFlight=true;
  try{
-  if(!ticker)throw new Error("Select an active BTC 15-minute market.");
-  const result=await kalshiApi("market?ticker="+encodeURIComponent(ticker));
-  const m=result.market||{};
-  const fmt=v=>{const n=Number(v);return Number.isFinite(n)&&v!==null&&v!==""?"$"+n.toFixed(2):"--";};
-  up=fmt(m.yes_ask_dollars??(m.yes_ask!=null?Number(m.yes_ask)/100:null));
-  down=fmt(m.no_ask_dollars??(m.no_ask!=null?Number(m.no_ask)/100:null));
-  const status=String(m.status||"").toLowerCase();
-  const close=m.close_time?Date.parse(m.close_time):NaN;
-  const live=["open","active"].includes(status)&&Number.isFinite(close)&&close>Date.now();
-  quoteReason=live?"Selected market is active.":"Selected market is not currently open or has expired.";
-  if(!live){up="--";down="--";}
- }catch(e){quoteReason="Quote unavailable: "+e.message;}
- get("kalshiAutoUpAsk").textContent=up;
- get("kalshiAutoDownAsk").textContent=down;
- const chosen=side==="UP"?up:side==="DOWN"?down:null;
- get("kalshiAutoPrice").textContent=chosen||"--";
- kalshiCaptureSignal(action,ticker,up,down);
- await kalshiResolveShadowTrades();
- if(side&&chosen&&chosen!=="--"){
-  get("kalshiAutoReason").textContent="Candidate "+side+" signal detected. Indicative one-contract ask: "+chosen+". Stage 1 only records the opportunity; no order sent.";
- }else{
-  get("kalshiAutoReason").textContent="No qualified BUY signal. Live quotes are shown separately; monitoring only, no order sent.";
+  const get=id=>document.getElementById(id);
+  if(Date.now()-kalshiLastMarketRefresh>15000||!get("kalshiMarket").value){
+   await kalshiLoadMarkets();
+  }
+  const action=(get("signal")?.textContent||"NO TRADE").trim();
+  const ticker=get("kalshiMarket").value;
+  const side=action==="BUY UP"?"UP":action==="BUY DOWN"?"DOWN":null;
+  const score=latestModel&&Number.isFinite(Number(latestModel.score))?Number(latestModel.score):null;
+  const confidence=score===null?"--":Math.round(Math.min(95,Math.max(5,50+Math.abs(score)/2)))+"% directional estimate";
+  get("kalshiAutoDecision").textContent=action;
+  get("kalshiAutoSide").textContent=side||"--";
+  get("kalshiAutoConfidence").textContent=confidence;
+  get("kalshiAutoChecks").textContent=String(++kalshiAutoCheckCount);
+  const modelReason=(get("signalReason")?.textContent||"The model has not supplied a reason yet.").trim();
+  let up="--",down="--",quoteReason="Market quote not checked.",quoteVerified=false;
+  try{
+   if(!ticker)throw new Error("No active BTC 15-minute market is available yet.");
+   const result=await kalshiApi("market?ticker="+encodeURIComponent(ticker));
+   const m=result.market||{};
+   const status=String(m.status||"").toLowerCase();
+   const close=m.close_time?Date.parse(m.close_time):NaN;
+   const live=["open","active"].includes(status)&&Number.isFinite(close)&&close>Date.now();
+   const yesAsk=kalshiQuoteDollars(m,"yes_ask_dollars","yes_ask");
+   const noAsk=kalshiQuoteDollars(m,"no_ask_dollars","no_ask");
+   if(!live)throw new Error("Selected market closed or expired; waiting for automatic rollover.");
+   if(yesAsk===null||noAsk===null)throw new Error("Market is open, but both live asks are not available yet.");
+   up="$"+yesAsk.toFixed(2);down="$"+noAsk.toFixed(2);
+   quoteVerified=true;
+   quoteReason="Active market and both live asks verified.";
+  }catch(e){quoteReason=e.message;}
+  get("kalshiAutoUpAsk").textContent=up;
+  get("kalshiAutoDownAsk").textContent=down;
+  const chosen=side==="UP"?up:side==="DOWN"?down:null;
+  get("kalshiAutoPrice").textContent=quoteVerified?(chosen||"--"):"--";
+  if(quoteVerified)kalshiCaptureSignal(action,ticker,up,down);
+  await kalshiResolveShadowTrades();
+  if(side&&quoteVerified&&chosen&&chosen!=="--"){
+   get("kalshiAutoReason").textContent="Candidate "+side+" signal detected. Indicative ask: "+chosen+". Decision-only test; no order sent.";
+  }else{
+   get("kalshiAutoReason").textContent="No verified trade candidate. The monitor requires an active market and both current asks before recording a signal.";
+  }
+  get("kalshiAutoWhy").textContent="Model context: "+modelReason+" Quote check: "+quoteReason;
+  get("kalshiAutoUpdated").textContent="Last check: "+new Date().toLocaleTimeString()+" · "+(ticker||"waiting for active market");
+  kalshiRecordDecision(action,ticker,score===null?"--":score.toFixed(0),up,down,quoteVerified?(side?"candidate "+side:"no entry"):"quotes unavailable");
+  kalshiAutoPreviewLastAction=action;
+ }catch(e){
+  const el=document.getElementById("kalshiAutoWhy");
+  if(el)el.textContent="Monitor check failed safely: "+e.message;
+ }finally{
+  kalshiAutoPreviewInFlight=false;
  }
- get("kalshiAutoWhy").textContent="Why no trade: "+modelReason+" Quote status: "+quoteReason;
- get("kalshiAutoUpdated").textContent="Last check: "+new Date().toLocaleTimeString()+" · "+(ticker||"no market selected");
- kalshiRecordDecision(action,ticker,score===null?"--":score.toFixed(0),up,down,side?"candidate "+side:"no entry");
- kalshiAutoPreviewLastAction=action;
 }
 async function kalshiLoadRiskStatus(){
  const el=document.getElementById("kalshiRiskStatus");
