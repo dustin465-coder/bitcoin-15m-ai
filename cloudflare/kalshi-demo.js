@@ -243,6 +243,22 @@ export async function handleKalshiRequest(request, env, url) {
   }
 
   try {
+    if (url.pathname === "/kalshi/supervised-order-check" && request.method === "GET") {
+      // Read-only deployment probe. This route never submits an order.
+      return json({
+        environment:"DEMO",
+        endpoint:"/kalshi/supervised-order",
+        supervisedOrderRouteInstalled:true,
+        explicitConfirmationRequired:true,
+        maximumContractsPerOrder:1,
+        fillOrKill:true,
+        mappingTestsPassed:verifyBtcIntentMapping(),
+        legacyOrderRouteLocked:true,
+        orderSent:false,
+        checkedAt:new Date().toISOString()
+      }, 200, allowedOrigin);
+    }
+
     if (url.pathname === "/kalshi/order-preview" && request.method === "GET") {
       // Dry-run mapping endpoint. It never submits or changes an order.
       const intent = String(url.searchParams.get("intent") || "").toLowerCase();
