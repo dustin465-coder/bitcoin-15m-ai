@@ -142,7 +142,7 @@ export async function handleKalshiRequest(request, env, url) {
     }
 
     if (url.pathname === "/kalshi/orders" && request.method === "GET") {
-      const data = await signedKalshiRequest(env, "GET", "/portfolio/events/orders?limit=100");
+      const data = await signedKalshiRequest(env, "GET", "/portfolio/orders?limit=100");
       return json({environment:"DEMO", ...data}, 200, allowedOrigin);
     }
 
