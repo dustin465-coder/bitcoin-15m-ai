@@ -87,6 +87,47 @@ async function signedKalshiRequest(env, method, endpoint, body) {
   }
   return data;
 }
+
+function utcDayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+function balanceToDollars(balance) {
+  if (balance && balance.balance_dollars != null) return Number(balance.balance_dollars);
+  if (balance && balance.balance != null) return Number(balance.balance) / 100;
+  throw new Error("Kalshi balance response did not contain a recognized balance field.");
+}
+async function getRiskSnapshot(env) {
+  if (!env.BOT_STATE) throw new Error("The BOT_STATE KV binding is missing. Add it in Worker Settings > Bindings.");
+  const [balance, positions] = await Promise.all([
+    signedKalshiRequest(env, "GET", "/portfolio/balance"),
+    signedKalshiRequest(env, "GET", "/portfolio/positions?limit=100"),
+  ]);
+  const currentBalance = balanceToDollars(balance);
+  const dayKey = utcDayKey();
+  const key = "risk:daily:" + dayKey;
+  let record = await env.BOT_STATE.get(key, "json");
+  if (!record) {
+    record = { day: dayKey, startingBalance: currentBalance, createdAt: new Date().toISOString() };
+    await env.BOT_STATE.put(key, JSON.stringify(record));
+  }
+  const balanceDrawdown = Math.max(0, Number(record.startingBalance) - currentBalance);
+  const rows = positions.market_positions || positions.positions || [];
+  const openPositions = rows.filter(p => Math.abs(Number(p.position_fp ?? p.position ?? 0)) > 0);
+  return {
+    environment: "DEMO",
+    day: dayKey,
+    startingBalance: Number(record.startingBalance),
+    currentBalance,
+    balanceDrawdown: Number(balanceDrawdown.toFixed(2)),
+    dailyLossLimit: 5,
+    maxEntryCost: 1,
+    maxOpenPositions: 1,
+    openPositionCount: openPositions.length,
+    tradingEnabled: false,
+    note: "Read-only safety check. Drawdown uses account balance and does not include unrealized losses on open positions. Automatic order execution remains disabled.",
+  };
+}
+
 function sameToken(a, b) {
   if (!a || !b || a.length !== b.length) return false;
   let diff = 0;
@@ -110,6 +151,11 @@ export async function handleKalshiRequest(request, env, url) {
   }
 
   try {
+    if (url.pathname === "/kalshi/risk-status" && request.method === "GET") {
+      const risk = await getRiskSnapshot(env);
+      return json(risk, 200, allowedOrigin);
+    }
+
     if (url.pathname === "/kalshi/status" && request.method === "GET") {
       const [balance, exchange] = await Promise.all([
         signedKalshiRequest(env, "GET", "/portfolio/balance"),
