@@ -295,6 +295,54 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 </div>
 </section>
 
+
+<section class="card" id="kalshiDemoCard">
+ <h2>KALSHI DEMO API CONNECTION</h2>
+ <div class="small">Connect this dashboard to Kalshi's separate demo exchange. Your Kalshi private key stays in Cloudflare Worker secrets; only a dashboard access token is entered here. This section can submit a one-contract DEMO limit order after you confirm it.</div>
+ <div class="grid" style="margin-top:14px">
+  <label class="small">Cloudflare Worker URL
+   <input id="kalshiWorkerUrl" type="url" placeholder="https://your-worker.workers.dev" autocomplete="url" style="display:block;width:100%;margin-top:6px;padding:11px;border-radius:8px;background:#101b22;border:1px solid #43545b;color:#edf3f4">
+  </label>
+  <label class="small">Dashboard access token
+   <input id="kalshiAccessToken" type="password" placeholder="Your Cloudflare BOT_ACCESS_TOKEN" autocomplete="off" style="display:block;width:100%;margin-top:6px;padding:11px;border-radius:8px;background:#101b22;border:1px solid #43545b;color:#edf3f4">
+  </label>
+ </div>
+ <div class="paper-controls" style="margin-top:10px">
+  <button id="kalshiConnect" type="button">Connect Kalshi DEMO</button>
+  <button id="kalshiRefresh" type="button" class="paper-off">Refresh account</button>
+  <span class="pill" id="kalshiConnectionState">NOT CONNECTED</span>
+ </div>
+ <div id="kalshiMessage" class="small yellow" style="margin-top:10px">Setup required. This is not connected to your real Kalshi account.</div>
+ <div class="paper-grid">
+  <div class="paper-stat"><span class="small">Kalshi DEMO balance</span><strong id="kalshiBalance">--</strong></div>
+  <div class="paper-stat"><span class="small">Portfolio value</span><strong id="kalshiPortfolio">--</strong></div>
+  <div class="paper-stat"><span class="small">Exchange status</span><strong id="kalshiExchange">--</strong></div>
+ </div>
+ <div class="paper-controls">
+  <button id="kalshiLoadMarkets" type="button" class="paper-off">Find open BTC markets</button>
+  <button id="kalshiLoadPositions" type="button" class="paper-off">Refresh positions</button>
+  <button id="kalshiLoadOrders" type="button" class="paper-off">Refresh orders</button>
+ </div>
+ <div style="margin-top:12px">
+  <label class="small">Open Bitcoin market
+   <select id="kalshiMarket" style="display:block;width:100%;margin-top:6px;padding:11px;border-radius:8px;background:#101b22;border:1px solid #43545b;color:#edf3f4"><option value="">Connect and find markets first</option></select>
+  </label>
+ </div>
+ <div class="grid" style="margin-top:12px">
+  <label class="small">Limit price (USD)
+   <input id="kalshiPrice" type="number" min="0.01" max="0.99" step="0.01" value="0.01" style="display:block;width:100%;margin-top:6px;padding:11px;border-radius:8px;background:#101b22;border:1px solid #43545b;color:#edf3f4">
+  </label>
+  <div class="small">Order size<strong style="display:block;font-size:18px;color:#edf3f4;margin-top:8px">1 contract maximum</strong></div>
+ </div>
+ <div class="paper-controls" style="margin-top:10px">
+  <button id="kalshiBuyYes" type="button">Place DEMO BUY YES</button>
+  <button id="kalshiSellYes" type="button" class="paper-off">Place DEMO SELL YES</button>
+ </div>
+ <div class="small" id="kalshiPositions" style="margin-top:12px;white-space:pre-wrap">Positions: not loaded.</div>
+ <div class="small" id="kalshiOrders" style="margin-top:8px;white-space:pre-wrap">Orders: not loaded.</div>
+ <div class="small yellow" style="margin-top:12px">Safety limits: DEMO host is hard-coded in the Worker; exactly 1 contract per order; limit price must be $0.01–$0.99; each order requires a confirmation prompt. The existing paper bot does not send Kalshi orders automatically yet.</div>
+</section>
+
 <section class="card" id="autoPaperCard">
 <h2>AUTOMATIC DEMO BOT · KALSHI-STYLE PAPER TRADING</h2>
 <div class="small">Simulation only. No Kalshi connection, no orders, and no real money. It automatically follows BUY and CASH OUT signals from this dashboard. Each simulated contract is assumed to cost 50¢; this is a fixed test assumption, not a live Kalshi quote. Fees and slippage are excluded.</div>
@@ -1395,6 +1443,94 @@ setInterval(async()=>{if(livePrice===null)await refreshPrice();await refreshAnal
 setInterval(refreshPolymarket,15000);
 setInterval(updateCountdown,1000);
 setInterval(syncServerTime,60000);
+
+const KALSHI_WORKER_KEY="kalshiDemoWorkerUrl";
+function kalshiWorkerBase(){return (document.getElementById("kalshiWorkerUrl").value||"").trim().replace(/\\/+$/,"");}
+function kalshiToken(){return (document.getElementById("kalshiAccessToken").value||"").trim();}
+function kalshiEndpoint(path){const base=kalshiWorkerBase();if(!/^https:\\/\\//i.test(base))throw new Error("Enter your Cloudflare Worker URL starting with https://");return base+"/kalshi/"+path;}
+async function kalshiApi(path,options={}){
+ const token=kalshiToken();if(!token)throw new Error("Enter your dashboard access token.");
+ const response=await fetch(kalshiEndpoint(path),{...options,cache:"no-store",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json",...(options.headers||{})}});
+ let data={};try{data=await response.json()}catch(e){}
+ if(!response.ok)throw new Error(data.error||("Worker request failed: "+response.status));
+ return data;
+}
+function kalshiMoney(value){const n=Number(value);return Number.isFinite(n)?"$"+n.toFixed(2):"--";}
+function kalshiSetMessage(message,isError=false){const el=document.getElementById("kalshiMessage");el.textContent=message;el.className="small "+(isError?"red":"yellow");}
+function kalshiRememberWorker(){const base=kalshiWorkerBase();if(base)localStorage.setItem(KALSHI_WORKER_KEY,base);}
+async function kalshiConnect(){
+ try{
+  kalshiRememberWorker();
+  document.getElementById("kalshiConnectionState").textContent="CONNECTING...";
+  kalshiSetMessage("Checking your Kalshi DEMO credentials...");
+  const data=await kalshiApi("status");
+  const b=data.balance||{};
+  document.getElementById("kalshiBalance").textContent=kalshiMoney(b.balance_dollars??(Number(b.balance)/100));
+  document.getElementById("kalshiPortfolio").textContent=kalshiMoney(b.portfolio_value_dollars??(Number(b.portfolio_value)/100));
+  const ex=data.exchange||{};
+  document.getElementById("kalshiExchange").textContent=ex.exchange_active===false?"Paused":(ex.exchange_active===true?"Active":(ex.trading_active===true?"Trading":"Connected"));
+  document.getElementById("kalshiConnectionState").textContent="DEMO CONNECTED";
+  kalshiSetMessage("Authenticated successfully. This connection is to Kalshi DEMO only.");
+  await kalshiLoadMarkets();
+  await Promise.all([kalshiLoadPositions(),kalshiLoadOrders()]);
+ }catch(e){
+  document.getElementById("kalshiConnectionState").textContent="NOT CONNECTED";
+  kalshiSetMessage(e.message,true);
+ }
+}
+async function kalshiLoadMarkets(){
+ try{
+  const data=await kalshiApi("markets?status=open&limit=100");
+  const select=document.getElementById("kalshiMarket");
+  select.innerHTML="";
+  const markets=data.markets||[];
+  if(!markets.length){select.add(new Option("No open Bitcoin markets found",""));kalshiSetMessage("Connected, but the demo API returned no open Bitcoin markets in this page of results.");return;}
+  select.add(new Option("Choose a Bitcoin market",""));
+  markets.forEach(m=>select.add(new Option((m.title||m.ticker)+" · "+m.ticker,m.ticker)));
+  kalshiSetMessage("Loaded "+markets.length+" open Bitcoin market(s) from Kalshi DEMO.");
+ }catch(e){kalshiSetMessage(e.message,true);}
+}
+async function kalshiLoadPositions(){
+ try{
+  const data=await kalshiApi("positions");
+  const rows=data.market_positions||data.positions||[];
+  document.getElementById("kalshiPositions").textContent="DEMO positions ("+rows.length+"):\\n"+(rows.length?rows.map(p=>(p.ticker||"Market")+" · position "+(p.position_fp??p.position??"--")+" · market value "+(p.market_value_dollars??p.market_value??"--")).join("\\n"):"No open positions.");
+ }catch(e){document.getElementById("kalshiPositions").textContent="Positions: "+e.message;}
+}
+async function kalshiLoadOrders(){
+ try{
+  const data=await kalshiApi("orders");
+  const rows=data.orders||[];
+  document.getElementById("kalshiOrders").textContent="DEMO orders ("+rows.length+"):\\n"+(rows.length?rows.slice(0,12).map(o=>(o.ticker||"Market")+" · "+(o.side||"")+" · "+(o.count||o.remaining_count||"--")+" · "+(o.status||"")).join("\\n"):"No orders returned.");
+ }catch(e){document.getElementById("kalshiOrders").textContent="Orders: "+e.message;}
+}
+async function kalshiPlaceOrder(side){
+ try{
+  const ticker=document.getElementById("kalshiMarket").value;
+  const price=Number(document.getElementById("kalshiPrice").value);
+  if(!ticker)throw new Error("Choose an open Bitcoin market first.");
+  if(!Number.isFinite(price)||price<0.01||price>0.99)throw new Error("Enter a limit price from $0.01 to $0.99.");
+  const action=side==="bid"?"BUY YES":"SELL YES";
+  if(!confirm("Send one "+action+" contract to KALSHI DEMO at $"+price.toFixed(2)+"? This is a simulated order, not real money."))return;
+  const data=await kalshiApi("order",{method:"POST",body:JSON.stringify({ticker,side,count:1,price,confirmDemoOrder:true})});
+  const order=data.order||{};
+  kalshiSetMessage("Kalshi DEMO accepted the order. Order ID: "+(order.order_id||"returned")+" · filled "+(order.fill_count||"0")+" · remaining "+(order.remaining_count||"unknown"));
+  await Promise.all([kalshiLoadOrders(),kalshiLoadPositions()]);
+ }catch(e){kalshiSetMessage(e.message,true);}
+}
+function setupKalshiDemo(){
+ const saved=localStorage.getItem(KALSHI_WORKER_KEY);
+ if(saved)document.getElementById("kalshiWorkerUrl").value=saved;
+ document.getElementById("kalshiConnect").addEventListener("click",kalshiConnect);
+ document.getElementById("kalshiRefresh").addEventListener("click",kalshiConnect);
+ document.getElementById("kalshiLoadMarkets").addEventListener("click",kalshiLoadMarkets);
+ document.getElementById("kalshiLoadPositions").addEventListener("click",kalshiLoadPositions);
+ document.getElementById("kalshiLoadOrders").addEventListener("click",kalshiLoadOrders);
+ document.getElementById("kalshiBuyYes").addEventListener("click",()=>kalshiPlaceOrder("bid"));
+ document.getElementById("kalshiSellYes").addEventListener("click",()=>kalshiPlaceOrder("ask"));
+}
+
+setupKalshiDemo();
 </script>
 </body>
 </html>
