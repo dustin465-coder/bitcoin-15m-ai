@@ -380,6 +380,63 @@ export async function handleKalshiRequest(request, env, url) {
       return json({environment:"DEMO", ...data}, 200, allowedOrigin);
     }
 
+    if (url.pathname === "/kalshi/supervised-order" && request.method === "POST") {
+      // One-contract, explicitly confirmed DEMO-only test. FOK prevents resting remainder.
+      const input = await request.json();
+      const ticker = String(input.ticker || "").trim();
+      const intent = String(input.intent || "").toLowerCase();
+      const direction = String(input.direction || "").toUpperCase();
+      const contractPrice = Number(input.contractPrice);
+      if (input.confirmDemoOrder !== true) throw new Error("Explicit DEMO confirmation is required; no order sent.");
+      if (!/^[A-Z0-9_-]{3,80}$/.test(ticker)) throw new Error("Choose a valid market ticker.");
+      if (!["entry","exit"].includes(intent) || !["UP","DOWN"].includes(direction)) throw new Error("Choose entry/exit and UP/DOWN.");
+      if (!Number.isFinite(contractPrice) || contractPrice < 0.01 || contractPrice > 0.99) throw new Error("Contract limit price must be $0.01-$0.99.");
+      const marketResponse = await fetch(BASE + "/markets/" + encodeURIComponent(ticker), {headers:{"Accept":"application/json"}});
+      const marketData = await marketResponse.json();
+      if (!marketResponse.ok) throw new Error("Could not verify market; order blocked.");
+      const market = marketData.market || marketData;
+      const closeMs = market.close_time ? Date.parse(market.close_time) : NaN;
+      if (!["open","active"].includes(String(market.status || "").toLowerCase()) || !Number.isFinite(closeMs) || closeMs <= Date.now()) {
+        throw new Error("Market is not active and unexpired; order blocked.");
+      }
+      const side = mapBtcIntentToKalshiV2(intent, direction).kalshiV2Side;
+      const yesPrice = direction === "UP" ? contractPrice : Number((1 - contractPrice).toFixed(4));
+      if (intent === "entry") {
+        const risk = await getRiskSnapshot(env);
+        if (!risk.entryAllowed || !risk.fillAuditComplete || risk.riskLimitReached) throw new Error("Entry blocked by DEMO risk checks. Check equity drawdown, fills audit, positions and resting orders.");
+        if (contractPrice > 1.00) throw new Error("Entry cost exceeds the $1.00 cap.");
+      } else {
+        const [positions, orders] = await Promise.all([
+          signedKalshiRequest(env, "GET", "/portfolio/positions?limit=1000&count_filter=position&ticker=" + encodeURIComponent(ticker)),
+          signedKalshiRequest(env, "GET", "/portfolio/orders?limit=200"),
+        ]);
+        const rows = positions.market_positions || [];
+        const p = rows.find(x => x.ticker === ticker && Math.abs(Number(x.position_fp ?? 0)) >= 1);
+        const held = p ? Number(p.position_fp) : 0;
+        if (!p || (direction === "UP" && held <= 0) || (direction === "DOWN" && held >= 0)) {
+          throw new Error("Exit blocked: no matching one-contract-or-larger " + direction + " position was verified.");
+        }
+        const resting = (orders.orders || []).some(o => o.ticker === ticker && ["resting","pending","open"].includes(String(o.status || "").toLowerCase()) && Number(o.remaining_count_fp ?? o.remaining_count ?? 0) > 0);
+        if (resting) throw new Error("Exit blocked: a resting order already exists for this market. Cancel or resolve it first.");
+      }
+      const body = {
+        ticker, side, count:"1", price:yesPrice.toFixed(4),
+        time_in_force:"fill_or_kill",
+        self_trade_prevention_type:"taker_at_cross",
+        client_order_id:"btc-demo-test-" + crypto.randomUUID(),
+      };
+      const response = await signedKalshiRequest(env, "POST", "/portfolio/events/orders", body);
+      const order = response.order || response;
+      const filled = Number(order.fill_count_fp ?? order.fill_count ?? 0);
+      return json({
+        environment:"DEMO", supervised:true, intent, direction, ticker,
+        kalshiSide:side, yesBookLimitPrice:yesPrice, requestedContractPrice:contractPrice,
+        orderAccepted:true, fillCount:filled, fullyFilled:filled >= 1,
+        orderId:order.order_id || null, order,
+        note:filled >= 1 ? "Kalshi reports a full one-contract fill. Refresh positions and fills to independently verify." : "Order accepted but no full fill is confirmed in the immediate response. Check orders and fills before any further action."
+      }, 201, allowedOrigin);
+    }
+
     if (url.pathname === "/kalshi/order" && request.method === "POST") {
       return json({error:"Order execution is temporarily locked while position-aware entry/exit mapping and fill-based loss controls are being validated. No order was sent."}, 423, allowedOrigin);
       const input = await request.json();
