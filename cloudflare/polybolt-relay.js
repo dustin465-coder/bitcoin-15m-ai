@@ -1,7 +1,6 @@
 const POLYBOLT_URL = "wss://ws-live-v2.polymarket.com/ws";
-const AUTH_RID = "btc-relay-auth";
-const SUBSCRIBE_RID = "btc-relay-twap";
-const TWAP_CHANNEL = "price.crypto.twap";
+const AUTH_RID = "polybolt-relay-auth";
+const SUBSCRIBE_RID = "polybolt-relay-price";
 
 function status(socket, state, detail = "") {
   if (socket.readyState !== WebSocket.OPEN) return;
@@ -33,10 +32,12 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/health" && request.method === "GET") {
-      return Response.json({ ok: true, service: "BTC PolyBolt TWAP relay" });
+      return Response.json({ ok: true, service: "PolyBolt BTC and Gold relay" });
     }
 
-    if (url.pathname !== "/twap") {
+    const isGold = url.pathname === "/gold";
+    const isBtc = url.pathname === "/twap";
+    if (!isGold && !isBtc) {
       return new Response("Not found", { status: 404 });
     }
     if (request.headers.get("Upgrade") !== "websocket") {
@@ -93,8 +94,8 @@ export default {
         op: "subscribe",
         rid: SUBSCRIBE_RID,
         subscriptions: [{
-          channel: TWAP_CHANNEL,
-          filter: { symbol: "btcusd", window_seconds: 60 },
+          channel: isGold ? "price.equity" : "price.crypto.twap",
+          filter: isGold ? { symbol: "xauusd" } : { symbol: "btcusd", window_seconds: 60 },
         }],
       }));
       subscriptionTimer = setTimeout(() => fail("subscribe_timeout"), 12000);
@@ -149,16 +150,22 @@ export default {
         return;
       }
 
-      if (message.channel !== TWAP_CHANNEL) return;
+      const expectedChannel = isGold ? "price.equity" : "price.crypto.twap";
+      const expectedSymbol = isGold ? "xauusd" : "btcusd";
+      if (message.channel !== expectedChannel) return;
       const payload = message.payload || {};
-      if (String(payload.symbol || "").toLowerCase() !== "btcusd") return;
-      if (payload.window_seconds != null && Number(payload.window_seconds) !== 60) return;
+      if (String(payload.symbol || "").toLowerCase() !== expectedSymbol) return;
+      if (!isGold && payload.window_seconds != null && Number(payload.window_seconds) !== 60) return;
+      if (isGold && payload.source && String(payload.source).toLowerCase() !== "chainlink") {
+        // Do not forward a non-Chainlink quote as if it were the market's settlement feed.
+        return;
+      }
       if (!isSubscribed) return;
 
       gotSample = true;
       clearTimeout(sampleTimer);
       if (server.readyState === WebSocket.OPEN) {
-        // Forward only the requested public BTC/USD 60-second TWAP channel.
+        // Forward only the requested BTC TWAP or Chainlink XAU/USD reference-price channel.
         server.send(JSON.stringify(message));
       }
     });
