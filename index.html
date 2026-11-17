@@ -1445,9 +1445,9 @@ setInterval(updateCountdown,1000);
 setInterval(syncServerTime,60000);
 
 const KALSHI_WORKER_KEY="kalshiDemoWorkerUrl";
-function kalshiWorkerBase(){return (document.getElementById("kalshiWorkerUrl").value||"").trim().replace(/\\/+$/,"");}
+function kalshiWorkerBase(){return (document.getElementById("kalshiWorkerUrl").value||"").trim().replace(/\/+$/,"");}
 function kalshiToken(){return (document.getElementById("kalshiAccessToken").value||"").trim();}
-function kalshiEndpoint(path){const base=kalshiWorkerBase();if(!/^https:\\/\\//i.test(base))throw new Error("Enter your Cloudflare Worker URL starting with https://");return base+"/kalshi/"+path;}
+function kalshiEndpoint(path){const base=kalshiWorkerBase();if(!/^https:\/\//i.test(base))throw new Error("Enter your Cloudflare Worker URL starting with https://");return base+"/kalshi/"+path;}
 async function kalshiApi(path,options={}){
  const token=kalshiToken();if(!token)throw new Error("Enter your dashboard access token.");
  const response=await fetch(kalshiEndpoint(path),{...options,cache:"no-store",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json",...(options.headers||{})}});
