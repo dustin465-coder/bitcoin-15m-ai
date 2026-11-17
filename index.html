@@ -367,7 +367,18 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
  <div class="paper-stat"><span class="small">Max planned cost</span><strong id="kalshiAutoCost">$1.00</strong></div>
 </div>
 <div class="small" id="kalshiAutoReason" style="margin-top:10px">Start the monitor to watch decisions. No orders will be sent in this stage.</div>
+<div class="paper-grid" style="margin-top:10px">
+ <div class="paper-stat"><span class="small">Live UP ask</span><strong id="kalshiAutoUpAsk">--</strong></div>
+ <div class="paper-stat"><span class="small">Live DOWN ask</span><strong id="kalshiAutoDownAsk">--</strong></div>
+ <div class="paper-stat"><span class="small">Model confidence</span><strong id="kalshiAutoConfidence">--</strong></div>
+ <div class="paper-stat"><span class="small">Checks completed</span><strong id="kalshiAutoChecks">0</strong></div>
+</div>
+<div class="small" id="kalshiAutoWhy" style="margin-top:10px">Why no trade: waiting for the first check.</div>
 <div class="small" id="kalshiAutoUpdated" style="margin-top:6px">Not started.</div>
+<div class="paper-stat" style="margin-top:10px">
+ <strong>RECENT DECISION HISTORY</strong>
+ <div class="small" id="kalshiAutoHistory" style="margin-top:7px;white-space:pre-wrap">No checks recorded yet.</div>
+</div>
 <div class="paper-stat" style="margin-top:10px">
  <strong>SERVER-SIDE DEMO SAFETY CHECK</strong>
  <div class="small" id="kalshiRiskStatus" style="margin-top:7px">Not checked. Deploy the updated Worker code and connect to Kalshi DEMO.</div>
@@ -1585,37 +1596,58 @@ async function kalshiLoadOrders(){
 let kalshiAutoPreviewEnabled=false;
 let kalshiAutoPreviewLastAction="";
 let kalshiAutoPreviewTimer=null;
+let kalshiAutoCheckCount=0;
+let kalshiAutoHistory=[];
+let kalshiAutoLastHistoryKey="";
+let kalshiAutoLastHistoryAt=0;
+function kalshiRecordDecision(action,ticker,score,up,down,reason){
+ const now=Date.now();
+ const key=[action,ticker,score,up,down].join("|");
+ if(key===kalshiAutoLastHistoryKey&&now-kalshiAutoLastHistoryAt<30000)return;
+ kalshiAutoLastHistoryKey=key;kalshiAutoLastHistoryAt=now;
+ kalshiAutoHistory.unshift(new Date(now).toLocaleTimeString()+" · "+action+" · score "+score+" · UP "+up+" · DOWN "+down+" · "+reason);
+ kalshiAutoHistory=kalshiAutoHistory.slice(0,12);
+ document.getElementById("kalshiAutoHistory").textContent=kalshiAutoHistory.join("\n");
+}
 async function updateKalshiAutoPreview(){
- const decision=document.getElementById("kalshiAutoDecision");
- const sideEl=document.getElementById("kalshiAutoSide");
- const priceEl=document.getElementById("kalshiAutoPrice");
- const reasonEl=document.getElementById("kalshiAutoReason");
- const updatedEl=document.getElementById("kalshiAutoUpdated");
  if(!kalshiAutoPreviewEnabled)return;
- const action=(document.getElementById("signal")?.textContent||"NO TRADE").trim();
- const ticker=document.getElementById("kalshiMarket").value;
+ const get=id=>document.getElementById(id);
+ const action=(get("signal")?.textContent||"NO TRADE").trim();
+ const ticker=get("kalshiMarket").value;
  const side=action==="BUY UP"?"UP":action==="BUY DOWN"?"DOWN":null;
- decision.textContent=action;
- sideEl.textContent=side||"--";
- if(!side||!ticker){
-  priceEl.textContent="--";
-  reasonEl.textContent="No qualified BUY signal or no active market. Monitoring only; no order sent.";
+ const score=latestModel&&Number.isFinite(Number(latestModel.score))?Number(latestModel.score):null;
+ const confidence=score===null?"--":Math.round(Math.min(95,Math.max(5,50+Math.abs(score)/2)))+"% directional estimate";
+ get("kalshiAutoDecision").textContent=action;
+ get("kalshiAutoSide").textContent=side||"--";
+ get("kalshiAutoConfidence").textContent=confidence;
+ get("kalshiAutoChecks").textContent=String(++kalshiAutoCheckCount);
+ const modelReason=(get("signalReason")?.textContent||"The model has not supplied a reason yet.").trim();
+ let up="--",down="--",quoteReason="Market quote not checked.";
+ try{
+  if(!ticker)throw new Error("Select an active BTC 15-minute market.");
+  const result=await kalshiApi("market?ticker="+encodeURIComponent(ticker));
+  const m=result.market||{};
+  const fmt=v=>{const n=Number(v);return Number.isFinite(n)&&v!==null&&v!==""?"$"+n.toFixed(2):"--";};
+  up=fmt(m.yes_ask_dollars??(m.yes_ask!=null?Number(m.yes_ask)/100:null));
+  down=fmt(m.no_ask_dollars??(m.no_ask!=null?Number(m.no_ask)/100:null));
+  const status=String(m.status||"").toLowerCase();
+  const close=m.close_time?Date.parse(m.close_time):NaN;
+  const live=["open","active"].includes(status)&&Number.isFinite(close)&&close>Date.now();
+  quoteReason=live?"Selected market is active.":"Selected market is not currently open or has expired.";
+  if(!live){up="--";down="--";}
+ }catch(e){quoteReason="Quote unavailable: "+e.message;}
+ get("kalshiAutoUpAsk").textContent=up;
+ get("kalshiAutoDownAsk").textContent=down;
+ const chosen=side==="UP"?up:side==="DOWN"?down:null;
+ get("kalshiAutoPrice").textContent=chosen||"--";
+ if(side&&chosen&&chosen!=="--"){
+  get("kalshiAutoReason").textContent="Candidate "+side+" signal detected. Indicative one-contract ask: "+chosen+". Stage 1 only records the opportunity; no order sent.";
  }else{
-  try{
-   const result=await kalshiApi("market?ticker="+encodeURIComponent(ticker));
-   const m=result.market||{};
-   const status=String(m.status||"").toLowerCase();
-   const close=m.close_time?Date.parse(m.close_time):NaN;
-   const live=["open","active"].includes(status)&&Number.isFinite(close)&&close>Date.now();
-   const raw=side==="UP"?m.yes_ask_dollars:m.no_ask_dollars;
-   const price=Number(raw);
-   priceEl.textContent=Number.isFinite(price)?"$"+price.toFixed(2):"Unavailable";
-   reasonEl.textContent=live&&Number.isFinite(price)&&price>=0.01&&price<=1
-    ?"Qualified "+side+" signal. One-contract quoted cost: $"+price.toFixed(2)+". Stage 1 records the opportunity only; no order sent."
-    :"Signal ignored because the selected market is closed, expired, or has no valid ask price.";
-  }catch(e){priceEl.textContent="Error";reasonEl.textContent="Quote check failed: "+e.message;}
+  get("kalshiAutoReason").textContent="No qualified BUY signal. Live quotes are shown separately; monitoring only, no order sent.";
  }
- updatedEl.textContent="Last check: "+new Date().toLocaleTimeString()+" · "+(ticker||"no market selected");
+ get("kalshiAutoWhy").textContent="Why no trade: "+modelReason+" Quote status: "+quoteReason;
+ get("kalshiAutoUpdated").textContent="Last check: "+new Date().toLocaleTimeString()+" · "+(ticker||"no market selected");
+ kalshiRecordDecision(action,ticker,score===null?"--":score.toFixed(0),up,down,side?"candidate "+side:"no entry");
  kalshiAutoPreviewLastAction=action;
 }
 async function kalshiLoadRiskStatus(){
