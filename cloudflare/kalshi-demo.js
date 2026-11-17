@@ -111,7 +111,7 @@ async function getTodayFillAudit(env) {
   const fills = [];
   const seenCursors = new Set();
   for (let page = 0; page < 10; page++) {
-    const params = new URLSearchParams({limit:"1000", min_ts:String(minTs)});
+    const params = new URLSearchParams({limit:"200", min_ts:String(minTs)});
     if (cursor) params.set("cursor", cursor);
     const data = await signedKalshiRequest(env, "GET", "/portfolio/fills?" + params.toString());
     if (!Array.isArray(data.fills)) throw new Error("Kalshi fills response was missing its fills list.");
@@ -255,11 +255,12 @@ export async function handleKalshiRequest(request, env, url) {
       // Read-only readiness check. This route never creates, changes, or cancels orders.
       const ticker = String(url.searchParams.get("ticker") || "").trim();
       if (!/^[A-Z0-9_-]{3,80}$/.test(ticker)) throw new Error("Choose a valid BTC 15-minute market ticker.");
-      const [marketResponse, positions, orders, fills] = await Promise.all([
+      const [marketResponse, positions, orders, fills, dailyFillAudit] = await Promise.all([
         fetch(BASE + "/markets/" + encodeURIComponent(ticker), {headers:{"Accept":"application/json"}}),
         signedKalshiRequest(env, "GET", "/portfolio/positions?limit=1000&count_filter=position&ticker=" + encodeURIComponent(ticker)),
         signedKalshiRequest(env, "GET", "/portfolio/orders?limit=200"),
-        signedKalshiRequest(env, "GET", "/portfolio/fills?limit=100"),
+        signedKalshiRequest(env, "GET", "/portfolio/fills?limit=200"),
+        getTodayFillAudit(env),
       ]);
       const marketData = await marketResponse.json();
       if (!marketResponse.ok) throw new Error("Could not verify selected market: " + (marketData.message || marketResponse.status));
@@ -296,6 +297,7 @@ export async function handleKalshiRequest(request, env, url) {
         noExistingPositionInSelectedMarket: selectedPositions.length === 0,
         noRestingOrderInSelectedMarket: restingOrders.length === 0,
         fillsEndpointReadable: Array.isArray(fillRows),
+        dailyFillAuditComplete: dailyFillAudit.complete === true,
         entryMappingValidated: verifyBtcIntentMapping(),
         exitMappingValidated: verifyBtcIntentMapping(),
         fillBasedLossControlValidated: false,
@@ -314,11 +316,12 @@ export async function handleKalshiRequest(request, env, url) {
         selectedPositions,
         selectedRestingOrderCount:restingOrders.length,
         recentFillCount:fillRows.length,
+        dailyFillAudit,
         checks,
         passedChecks:passed,
         totalChecks:Object.keys(checks).length,
         readyToSubmit:false,
-        note:"Read-only preflight only. Four directional mappings are checked in code: entry UP=bid, entry DOWN=ask, exit UP=ask, exit DOWN=bid. This verifies translation logic, not an actual filled entry/exit. Fill-based loss controls still require validation. No order was sent."
+        note:"Read-only preflight only. Four directional mappings are checked in code: entry UP=bid, entry DOWN=ask, exit UP=ask, exit DOWN=bid. This verifies translation logic, not an actual filled entry/exit. Today's fill audit must paginate completely. Daily loss control still uses account-equity drawdown rather than a verified realized-P&L ledger. No order was sent."
       }, 200, allowedOrigin);
     }
 
