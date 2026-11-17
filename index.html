@@ -1490,12 +1490,26 @@ async function kalshiLoadMarkets(){
  try{
   const data=await kalshiApi("markets?status=open&limit=1000");
   const select=document.getElementById("kalshiMarket");
+  const previous=select.value;
   select.innerHTML="";
-  const markets=data.markets||[];
-  if(!markets.length){select.add(new Option("No open Bitcoin markets found",""));kalshiSetMessage("Connected, but the demo API returned no open Bitcoin markets in this page of results.");return;}
-  select.add(new Option("Choose a Bitcoin market",""));
+  const now=Date.now();
+  const markets=(data.markets||[]).filter(m=>{
+   const status=String(m.status||"").toLowerCase();
+   const close=m.close_time?Date.parse(m.close_time):NaN;
+   return ["open","active"].includes(status) && Number.isFinite(close) && close>now;
+  }).sort((a,b)=>Date.parse(a.close_time)-Date.parse(b.close_time));
+  if(!markets.length){
+   select.add(new Option("No currently active 15-minute BTC markets",""));
+   kalshiSetMessage("No active, unexpired 15-minute BTC markets were returned. No orders can be placed.",true);
+   await kalshiLoadLiveMarket();
+   return;
+  }
+  select.add(new Option("Choose a current Bitcoin market",""));
   markets.forEach(m=>select.add(new Option((m.title||m.ticker)+" · "+m.ticker,m.ticker)));
-  kalshiSetMessage("Loaded "+markets.length+" open Bitcoin market(s) from Kalshi DEMO.");
+  if(markets.some(m=>m.ticker===previous))select.value=previous;
+  else select.value=markets[0].ticker;
+  kalshiSetMessage("Loaded "+markets.length+" active, unexpired 15-minute BTC market(s).");
+  await kalshiLoadLiveMarket();
  }catch(e){kalshiSetMessage(e.message,true);}
 }
 async function kalshiLoadLiveMarket(){
@@ -1503,16 +1517,22 @@ async function kalshiLoadLiveMarket(){
  const up=document.getElementById("kalshiLiveUp"), down=document.getElementById("kalshiLiveDown");
  const upBid=document.getElementById("kalshiLiveUpBid"), downBid=document.getElementById("kalshiLiveDownBid");
  const meta=document.getElementById("kalshiLiveMeta");
- if(!ticker){up.textContent="--";down.textContent="--";upBid.textContent="Bid: --";downBid.textContent="Bid: --";meta.textContent="Choose a market to load live prices.";return;}
+ const buy=document.getElementById("kalshiBuyYes"), sell=document.getElementById("kalshiSellYes");
+ if(!ticker){up.textContent="--";down.textContent="--";upBid.textContent="Bid: --";downBid.textContent="Bid: --";meta.textContent="Choose a market to load live prices.";buy.disabled=true;sell.disabled=true;return;}
+ buy.disabled=true;sell.disabled=true;
  try{
   const data=await kalshiApi("market?ticker="+encodeURIComponent(ticker));
   const m=data.market||{};
+  const status=String(m.status||"").toLowerCase();
+  const closeMs=m.close_time?Date.parse(m.close_time):NaN;
+  const tradable=["open","active"].includes(status)&&Number.isFinite(closeMs)&&closeMs>Date.now();
   const fmt=v=>{const n=Number(v);return Number.isFinite(n)?"$"+n.toFixed(4):"--";};
   up.textContent=fmt(m.yes_ask_dollars); down.textContent=fmt(m.no_ask_dollars);
   upBid.textContent="Bid: "+fmt(m.yes_bid_dollars); downBid.textContent="Bid: "+fmt(m.no_bid_dollars);
   const close=m.close_time?new Date(m.close_time).toLocaleTimeString():"not supplied";
-  meta.textContent="Market: "+ticker+" · status: "+(m.status||"unknown")+" · closes: "+close+" · updated: "+new Date().toLocaleTimeString();
- }catch(e){meta.textContent="Live price error: "+e.message;}
+  meta.textContent="Market: "+ticker+" · status: "+(m.status||"unknown")+" · closes: "+close+" · updated: "+new Date().toLocaleTimeString()+(tradable?" · trading enabled":" · NOT TRADABLE — market is finalized, closed, or expired");
+  buy.disabled=!tradable;sell.disabled=!tradable;
+ }catch(e){meta.textContent="Live price error: "+e.message;buy.disabled=true;sell.disabled=true;}
 }
 async function kalshiLoadPositions(){
  try{
