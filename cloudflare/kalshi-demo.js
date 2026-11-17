@@ -166,6 +166,15 @@ export async function handleKalshiRequest(request, env, url) {
       if (!Number.isFinite(count) || count !== 1) throw new Error("Demo safety limit: exactly 1 contract per test order.");
       if (!Number.isFinite(price) || price < 0.01 || price > 0.99) throw new Error("Limit price must be between $0.01 and $0.99.");
       if (input.confirmDemoOrder !== true) throw new Error("Order not sent: explicit demo confirmation is required.");
+      const marketResponse = await fetch(BASE + "/markets/" + encodeURIComponent(ticker), {headers:{"Accept":"application/json"}});
+      const marketData = await marketResponse.json();
+      if (!marketResponse.ok) throw new Error("Could not verify market status; order blocked.");
+      const market = marketData.market || marketData;
+      const marketStatus = String(market.status || "").toLowerCase();
+      const closeTime = market.close_time ? Date.parse(market.close_time) : NaN;
+      if (!["open","active"].includes(marketStatus) || !Number.isFinite(closeTime) || closeTime <= Date.now()) {
+        throw new Error("Order blocked: this market is not active and unexpired.");
+      }
       const body = {
         ticker, side, count:"1", price:price.toFixed(4),
         time_in_force:"good_till_canceled",
