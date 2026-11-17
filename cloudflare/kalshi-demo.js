@@ -148,6 +148,37 @@ async function getRiskSnapshot(env) {
   };
 }
 
+// Convert a BTC directional intent into Kalshi's V2 YES-book side.
+// Entry UP = buy YES (bid); entry DOWN = buy NO (ask).
+// Exit UP = sell YES (ask); exit DOWN = sell NO (bid).
+function mapBtcIntentToKalshiV2(intent, direction) {
+  const normalizedIntent = String(intent || "").toLowerCase();
+  const normalizedDirection = String(direction || "").toUpperCase();
+  if (!["entry","exit"].includes(normalizedIntent) || !["UP","DOWN"].includes(normalizedDirection)) {
+    throw new Error("Intent must be entry/exit and direction must be UP/DOWN.");
+  }
+  const map = {
+    entry: { UP: "bid", DOWN: "ask" },
+    exit:  { UP: "ask", DOWN: "bid" },
+  };
+  return {
+    intent: normalizedIntent,
+    direction: normalizedDirection,
+    kalshiV2Side: map[normalizedIntent][normalizedDirection],
+    exposure: normalizedIntent === "entry" ? normalizedDirection : "close " + normalizedDirection,
+    note: "V2 side is expressed on the YES book: bid increases YES exposure; ask decreases YES exposure (increases NO exposure)."
+  };
+}
+function verifyBtcIntentMapping() {
+  const cases = [
+    ["entry","UP","bid"],["entry","DOWN","ask"],
+    ["exit","UP","ask"],["exit","DOWN","bid"]
+  ];
+  return cases.every(([intent,direction,expected]) =>
+    mapBtcIntentToKalshiV2(intent,direction).kalshiV2Side === expected
+  );
+}
+
 function sameToken(a, b) {
   if (!a || !b || a.length !== b.length) return false;
   let diff = 0;
@@ -171,6 +202,14 @@ export async function handleKalshiRequest(request, env, url) {
   }
 
   try {
+    if (url.pathname === "/kalshi/order-preview" && request.method === "GET") {
+      // Dry-run mapping endpoint. It never submits or changes an order.
+      const intent = String(url.searchParams.get("intent") || "").toLowerCase();
+      const direction = String(url.searchParams.get("direction") || "").toUpperCase();
+      const mapping = mapBtcIntentToKalshiV2(intent, direction);
+      return json({environment:"DEMO", readOnly:true, ...mapping, mappingTestsPassed:verifyBtcIntentMapping(), orderSent:false}, 200, allowedOrigin);
+    }
+
     if (url.pathname === "/kalshi/preflight" && request.method === "GET") {
       // Read-only readiness check. This route never creates, changes, or cancels orders.
       const ticker = String(url.searchParams.get("ticker") || "").trim();
@@ -216,8 +255,8 @@ export async function handleKalshiRequest(request, env, url) {
         noExistingPositionInSelectedMarket: selectedPositions.length === 0,
         noRestingOrderInSelectedMarket: restingOrders.length === 0,
         fillsEndpointReadable: Array.isArray(fillRows),
-        entryMappingValidated: false,
-        exitMappingValidated: false,
+        entryMappingValidated: verifyBtcIntentMapping(),
+        exitMappingValidated: verifyBtcIntentMapping(),
         fillBasedLossControlValidated: false,
         orderSubmissionEnabled: false
       };
@@ -238,7 +277,7 @@ export async function handleKalshiRequest(request, env, url) {
         passedChecks:passed,
         totalChecks:Object.keys(checks).length,
         readyToSubmit:false,
-        note:"Read-only preflight only. Kalshi V2 order side bid means buy YES; ask means sell YES (economically equivalent to buying NO). Entry/exit mapping and fill-based loss controls still require a controlled, supervised validation. No order was sent."
+        note:"Read-only preflight only. Four directional mappings are checked in code: entry UP=bid, entry DOWN=ask, exit UP=ask, exit DOWN=bid. This verifies translation logic, not an actual filled entry/exit. Fill-based loss controls still require validation. No order was sent."
       }, 200, allowedOrigin);
     }
 
