@@ -351,6 +351,23 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
  <div class="small yellow" style="margin-top:12px">Safety limits: DEMO host is hard-coded in the Worker; exactly 1 contract per order; limit price must be $0.01–$0.99; each order requires a confirmation prompt. The existing paper bot does not send Kalshi orders automatically yet.</div>
 </section>
 
+<section class="card" id="kalshiAutopilotPreview">
+<h2>KALSHI DEMO AUTOPILOT · DECISION-ONLY TEST</h2>
+<div class="small">Stage 1: watches the model and live Kalshi quotes while this page is open. It does NOT place orders yet.</div>
+<div class="paper-controls" style="margin-top:12px">
+ <button id="kalshiAutoPreviewToggle" class="paper-off" type="button">Start decision monitor</button>
+ <span class="pill" id="kalshiAutoPreviewState">MONITOR OFF</span>
+</div>
+<div class="paper-grid">
+ <div class="paper-stat"><span class="small">Bot decision</span><strong id="kalshiAutoDecision">WAITING</strong></div>
+ <div class="paper-stat"><span class="small">Candidate side</span><strong id="kalshiAutoSide">--</strong></div>
+ <div class="paper-stat"><span class="small">Live buy price</span><strong id="kalshiAutoPrice">--</strong></div>
+ <div class="paper-stat"><span class="small">Max planned cost</span><strong id="kalshiAutoCost">$1.00</strong></div>
+</div>
+<div class="small" id="kalshiAutoReason" style="margin-top:10px">Start the monitor to watch decisions. No orders will be sent in this stage.</div>
+<div class="small" id="kalshiAutoUpdated" style="margin-top:6px">Not started.</div>
+</section>
+
 <section class="card" id="autoPaperCard">
 <h2>AUTOMATIC DEMO BOT · KALSHI-STYLE PAPER TRADING</h2>
 <div class="small">Simulation only. No Kalshi connection, no orders, and no real money. It automatically follows BUY and CASH OUT signals from this dashboard. Each simulated contract is assumed to cost 50¢; this is a fixed test assumption, not a live Kalshi quote. Fees and slippage are excluded.</div>
@@ -1550,6 +1567,52 @@ async function kalshiLoadOrders(){
   el.textContent="DEMO orders ("+rows.length+") · checked "+new Date().toLocaleTimeString()+"\\n"+(rows.length?rows.slice(0,12).map(o=>(o.ticker||"Market")+" · "+(o.side||"")+" · "+(o.count||o.remaining_count||"--")+" · "+(o.status||"")).join("\\n"):"No orders returned.");
  }catch(e){el.textContent="DEMO orders · failed "+new Date().toLocaleTimeString()+"\\n"+e.message;}
 }
+let kalshiAutoPreviewEnabled=false;
+let kalshiAutoPreviewLastAction="";
+async function updateKalshiAutoPreview(){
+ const decision=document.getElementById("kalshiAutoDecision");
+ const sideEl=document.getElementById("kalshiAutoSide");
+ const priceEl=document.getElementById("kalshiAutoPrice");
+ const reasonEl=document.getElementById("kalshiAutoReason");
+ const updatedEl=document.getElementById("kalshiAutoUpdated");
+ if(!kalshiAutoPreviewEnabled)return;
+ const action=(document.getElementById("signal")?.textContent||"NO TRADE").trim();
+ const ticker=document.getElementById("kalshiMarket").value;
+ const side=action==="BUY UP"?"UP":action==="BUY DOWN"?"DOWN":null;
+ decision.textContent=action;
+ sideEl.textContent=side||"--";
+ if(!side||!ticker){
+  priceEl.textContent="--";
+  reasonEl.textContent="No qualified BUY signal or no active market. Monitoring only; no order sent.";
+ }else{
+  try{
+   const result=await kalshiApi("market?ticker="+encodeURIComponent(ticker));
+   const m=result.market||{};
+   const status=String(m.status||"").toLowerCase();
+   const close=m.close_time?Date.parse(m.close_time):NaN;
+   const live=status==="open"&&Number.isFinite(close)&&close>Date.now();
+   const raw=side==="UP"?m.yes_ask_dollars:m.no_ask_dollars;
+   const price=Number(raw);
+   priceEl.textContent=Number.isFinite(price)?"$"+price.toFixed(2):"Unavailable";
+   reasonEl.textContent=live&&Number.isFinite(price)&&price>0&&price<=1
+    ?"Qualified "+side+" signal. One-contract estimated cost: $"+price.toFixed(2)+". Stage 1 records the opportunity only; no order sent."
+    :"Signal ignored because the selected market is closed, expired, or has no valid ask price.";
+  }catch(e){priceEl.textContent="Error";reasonEl.textContent="Quote check failed: "+e.message;}
+ }
+ updatedEl.textContent="Last check: "+new Date().toLocaleTimeString()+" · "+(ticker||"no market selected");
+ kalshiAutoPreviewLastAction=action;
+}
+function setupKalshiAutoPreview(){
+ const button=document.getElementById("kalshiAutoPreviewToggle");
+ button.addEventListener("click",()=>{
+  kalshiAutoPreviewEnabled=!kalshiAutoPreviewEnabled;
+  button.textContent=kalshiAutoPreviewEnabled?"Pause decision monitor":"Start decision monitor";
+  button.className=kalshiAutoPreviewEnabled?"paper-on":"paper-off";
+  document.getElementById("kalshiAutoPreviewState").textContent=kalshiAutoPreviewEnabled?"MONITOR RUNNING · NO ORDERS":"MONITOR OFF";
+  document.getElementById("kalshiAutoReason");
+  if(kalshiAutoPreviewEnabled)updateKalshiAutoPreview();
+ });
+}
 async function kalshiPlaceOrder(side){
  try{
   const ticker=document.getElementById("kalshiMarket").value;
@@ -1578,6 +1641,8 @@ function setupKalshiDemo(){
 }
 
 setupKalshiDemo();
+setupKalshiAutoPreview();
+setInterval(updateKalshiAutoPreview,5000);
 setInterval(()=>{if(document.getElementById("kalshiMarket").value)kalshiLoadLiveMarket();},5000);
 </script>
 </body>
