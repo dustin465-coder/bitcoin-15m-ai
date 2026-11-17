@@ -232,6 +232,11 @@ export async function handleKalshiRequest(request, env, url) {
       if (!Number.isFinite(count) || count !== 1) throw new Error("Demo safety limit: exactly 1 contract per test order.");
       if (!Number.isFinite(price) || price < 0.01 || price > 0.99) throw new Error("Limit price must be between $0.01 and $0.99.");
       if (input.confirmDemoOrder !== true) throw new Error("Order not sent: explicit demo confirmation is required.");
+      if (side === "bid") {
+        const risk = await getRiskSnapshot(env);
+        if (!risk.entryAllowed) throw new Error("DEMO entry blocked by server safety checks: daily drawdown, existing position, or resting order limit.");
+        if (price * count > risk.maxEntryCost) throw new Error("DEMO entry blocked: maximum entry cost is $1.00.");
+      }
       const marketResponse = await fetch(BASE + "/markets/" + encodeURIComponent(ticker), {headers:{"Accept":"application/json"}});
       const marketData = await marketResponse.json();
       if (!marketResponse.ok) throw new Error("Could not verify market status; order blocked.");
