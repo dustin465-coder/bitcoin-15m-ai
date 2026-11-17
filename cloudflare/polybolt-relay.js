@@ -1,3 +1,5 @@
+import { handleKalshiRequest } from "./kalshi-demo.js";
+
 const POLYBOLT_URL = "wss://ws-live-v2.polymarket.com/ws";
 const AUTH_RID = "polybolt-relay-auth";
 const SUBSCRIBE_RID = "polybolt-relay-price";
@@ -30,6 +32,10 @@ function parseMessage(data) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (url.pathname.startsWith("/kalshi/")) {
+      return handleKalshiRequest(request, env, url);
+    }
 
     if (url.pathname === "/health" && request.method === "GET") {
       return Response.json({ ok: true, service: "PolyBolt BTC and Gold relay" });
