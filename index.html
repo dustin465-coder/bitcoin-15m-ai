@@ -1584,6 +1584,7 @@ async function kalshiLoadOrders(){
 }
 let kalshiAutoPreviewEnabled=false;
 let kalshiAutoPreviewLastAction="";
+let kalshiAutoPreviewTimer=null;
 async function updateKalshiAutoPreview(){
  const decision=document.getElementById("kalshiAutoDecision");
  const sideEl=document.getElementById("kalshiAutoSide");
@@ -1632,8 +1633,13 @@ function setupKalshiAutoPreview(){
   button.textContent=kalshiAutoPreviewEnabled?"Pause decision monitor":"Start decision monitor";
   button.className=kalshiAutoPreviewEnabled?"paper-on":"paper-off";
   document.getElementById("kalshiAutoPreviewState").textContent=kalshiAutoPreviewEnabled?"MONITOR RUNNING · NO ORDERS":"MONITOR OFF";
-  document.getElementById("kalshiAutoReason");
-  if(kalshiAutoPreviewEnabled)updateKalshiAutoPreview();
+  if(kalshiAutoPreviewEnabled){
+   updateKalshiAutoPreview();
+   kalshiAutoPreviewTimer=setInterval(updateKalshiAutoPreview,5000);
+  }else if(kalshiAutoPreviewTimer){
+   clearInterval(kalshiAutoPreviewTimer);
+   kalshiAutoPreviewTimer=null;
+  }
  });
 }
 async function kalshiPlaceOrder(side){
