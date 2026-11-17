@@ -33,3 +33,35 @@ The Cloudflare secrets and GitHub Actions secrets are stored separately. The sam
 ## Optional command-line deployment
 
 From this folder, run `npx wrangler login`, add the three values with `npx wrangler secret put SECRET_NAME` (one command per name), then run `npx wrangler deploy`.
+
+
+## Kalshi DEMO API integration
+
+The dashboard now includes a separate Kalshi DEMO panel. The Worker is hard-coded to Kalshi's demo API host; there is no production URL or live-account switch in this integration.
+
+### One-time setup
+
+1. Sign in to your **Kalshi DEMO** account at https://demo.kalshi.co/ (not your regular live account).
+2. Open **Account & security → API Keys**, create a key, and save both the Key ID and downloaded private-key PEM file. Kalshi cannot show the private key again after you leave the page.
+3. In Cloudflare, open **Workers & Pages → btc-polybolt-twap-relay → Settings → Variables and Secrets**.
+4. Add these three values as **Secrets**:
+   - `BOT_ACCESS_TOKEN`: create a long, random password/token that you will enter into the dashboard.
+   - `KALSHI_DEMO_API_KEY_ID`: the Key ID from your DEMO account.
+   - `KALSHI_DEMO_PRIVATE_KEY`: the entire PEM private-key file contents, including the BEGIN/END lines.
+5. Deploy the Worker again so it uses the latest repository code. From the `cloudflare` folder, run `npx wrangler deploy` after signing in with `npx wrangler login`.
+6. In the dashboard's **Kalshi DEMO API Connection** panel, enter the Worker URL (for example, `https://btc-polybolt-twap-relay.<your-account>.workers.dev`) and the `BOT_ACCESS_TOKEN`, then choose **Connect Kalshi DEMO**.
+
+### What the panel can do
+
+- Verify the signed DEMO API connection and show DEMO balance / exchange status.
+- Find open Bitcoin markets and show DEMO positions and orders.
+- Submit a manually confirmed, one-contract YES-side limit order to DEMO at a price between $0.01 and $0.99.
+
+This first integration does not yet route the dashboard's BUY / CASH OUT signals into automatic Kalshi orders. Keep the dashboard's existing paper bot separate until the API connection, order acceptance, fills and cancellations have been tested.
+
+### Security
+
+- Never paste a Kalshi private key or `BOT_ACCESS_TOKEN` into ChatGPT, GitHub source files, or the dashboard's public HTML.
+- The private key and access token belong only in Cloudflare Worker Secrets.
+- The dashboard token is held in the current browser page only; the Worker URL is saved locally in the browser.
+- This integration uses the Kalshi DEMO host only and limits each submitted test order to one contract. It is not a production trading integration.
