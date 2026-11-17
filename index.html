@@ -1590,12 +1590,12 @@ async function updateKalshiAutoPreview(){
    const m=result.market||{};
    const status=String(m.status||"").toLowerCase();
    const close=m.close_time?Date.parse(m.close_time):NaN;
-   const live=status==="open"&&Number.isFinite(close)&&close>Date.now();
+   const live=["open","active"].includes(status)&&Number.isFinite(close)&&close>Date.now();
    const raw=side==="UP"?m.yes_ask_dollars:m.no_ask_dollars;
    const price=Number(raw);
    priceEl.textContent=Number.isFinite(price)?"$"+price.toFixed(2):"Unavailable";
-   reasonEl.textContent=live&&Number.isFinite(price)&&price>0&&price<=1
-    ?"Qualified "+side+" signal. One-contract estimated cost: $"+price.toFixed(2)+". Stage 1 records the opportunity only; no order sent."
+   reasonEl.textContent=live&&Number.isFinite(price)&&price>=0.01&&price<=1
+    ?"Qualified "+side+" signal. One-contract quoted cost: $"+price.toFixed(2)+". Stage 1 records the opportunity only; no order sent."
     :"Signal ignored because the selected market is closed, expired, or has no valid ask price.";
   }catch(e){priceEl.textContent="Error";reasonEl.textContent="Quote check failed: "+e.message;}
  }
