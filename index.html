@@ -376,14 +376,21 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 <div class="small" id="kalshiAutoWhy" style="margin-top:10px">Why no trade: waiting for the first check.</div>
 <div class="small" id="kalshiAutoUpdated" style="margin-top:6px">Not started.</div>
 <div class="paper-stat" style="margin-top:10px">
- <strong>SHADOW OPPORTUNITY TRACKER · NO ORDERS</strong>
+ <strong>SIGNAL TRACKER · NO ORDERS</strong>
  <div class="paper-grid" style="margin-top:8px">
-  <div class="paper-stat"><span class="small">Tracked signals</span><strong id="kalshiShadowCount">0</strong></div>
-  <div class="paper-stat"><span class="small">Resolved wins</span><strong id="kalshiShadowWins">0</strong></div>
-  <div class="paper-stat"><span class="small">Resolved losses</span><strong id="kalshiShadowLosses">0</strong></div>
-  <div class="paper-stat"><span class="small">Hypothetical net</span><strong id="kalshiShadowNet">$0.00</strong></div>
+  <div class="paper-stat"><span class="small">BUY signals</span><strong id="kalshiSigBuy">0</strong></div>
+  <div class="paper-stat"><span class="small">HOLD signals</span><strong id="kalshiSigHold">0</strong></div>
+  <div class="paper-stat"><span class="small">EXIT warnings</span><strong id="kalshiSigExit">0</strong></div>
+  <div class="paper-stat"><span class="small">CASH OUT signals</span><strong id="kalshiSigCash">0</strong></div>
  </div>
- <div class="small" id="kalshiShadowHistory" style="margin-top:8px;white-space:pre-wrap">No BUY opportunities captured yet. This tracker never sends orders.</div>
+ <div class="paper-grid" style="margin-top:8px">
+  <div class="paper-stat"><span class="small">Resolved directional matches</span><strong id="kalshiSigWins">0</strong></div>
+  <div class="paper-stat"><span class="small">Resolved directional misses</span><strong id="kalshiSigLosses">0</strong></div>
+  <div class="paper-stat"><span class="small">Pending settlement</span><strong id="kalshiSigPending">0</strong></div>
+  <div class="paper-stat"><span class="small">BUY-only hypothetical net</span><strong id="kalshiShadowNet">$0.00</strong></div>
+ </div>
+ <div class="small" id="kalshiShadowHistory" style="margin-top:8px;white-space:pre-wrap;max-height:130px;overflow-y:auto;padding:8px 10px;border:1px solid #2b414a;border-radius:8px">No signals captured yet. This tracker never sends orders.</div>
+ <div class="small" style="margin-top:6px">Directional matches compare BUY, HOLD and EXIT WARNING direction with final settlement. CASH OUT is logged as an event, not scored as a directional prediction. Hypothetical net uses BUY entries only and excludes fees.</div>
 </div>
 <div class="paper-stat" style="margin-top:10px">
  <strong>RECENT DECISION HISTORY</strong>
@@ -1611,39 +1618,57 @@ let kalshiAutoHistory=[];
 let kalshiAutoLastHistoryKey="";
 let kalshiAutoLastHistoryAt=0;
 let kalshiShadowTrades=JSON.parse(localStorage.getItem("kalshiShadowTradesV1")||"[]");
+let kalshiSignalEvents=JSON.parse(localStorage.getItem("kalshiSignalEventsV1")||"[]");
 function kalshiSaveShadowTrades(){localStorage.setItem("kalshiShadowTradesV1",JSON.stringify(kalshiShadowTrades));}
+function kalshiSaveSignalEvents(){localStorage.setItem("kalshiSignalEventsV1",JSON.stringify(kalshiSignalEvents));}
 function kalshiRenderShadowTrades(){
  const resolved=kalshiShadowTrades.filter(t=>t.outcome);
- const wins=resolved.filter(t=>t.outcome==="WIN").length;
- const losses=resolved.filter(t=>t.outcome==="LOSS").length;
  const net=resolved.reduce((sum,t)=>sum+(Number(t.pnl)||0),0);
- document.getElementById("kalshiShadowCount").textContent=String(kalshiShadowTrades.length);
- document.getElementById("kalshiShadowWins").textContent=String(wins);
- document.getElementById("kalshiShadowLosses").textContent=String(losses);
+ const count=type=>kalshiSignalEvents.filter(e=>e.type===type).length;
+ const scored=kalshiSignalEvents.filter(e=>e.type!=="CASH OUT"&&e.outcome);
+ document.getElementById("kalshiSigBuy").textContent=String(count("BUY"));
+ document.getElementById("kalshiSigHold").textContent=String(count("HOLD"));
+ document.getElementById("kalshiSigExit").textContent=String(count("EXIT WARNING"));
+ document.getElementById("kalshiSigCash").textContent=String(count("CASH OUT"));
+ document.getElementById("kalshiSigWins").textContent=String(scored.filter(e=>e.outcome==="MATCH").length);
+ document.getElementById("kalshiSigLosses").textContent=String(scored.filter(e=>e.outcome==="MISS").length);
+ document.getElementById("kalshiSigPending").textContent=String(kalshiSignalEvents.filter(e=>!e.outcome).length);
  document.getElementById("kalshiShadowNet").textContent=(net<0?"-":"")+"$"+Math.abs(net).toFixed(2);
- document.getElementById("kalshiShadowHistory").textContent=kalshiShadowTrades.length?kalshiShadowTrades.slice(-12).reverse().map(t=>new Date(t.time).toLocaleTimeString()+" · "+t.side+" · "+t.ticker+" · entry "+t.priceText+" · "+(t.outcome||"PENDING")+(t.outcome?" · "+(t.pnl>=0?"+":"-")+"$"+Math.abs(t.pnl).toFixed(2):"")).join("\n"):"No BUY opportunities captured yet. This tracker never sends orders.";
+ const lines=kalshiSignalEvents.slice(-16).reverse().map(e=>new Date(e.time).toLocaleTimeString()+" · "+e.type+" "+e.side+" · "+e.ticker+" · quote "+e.priceText+" · "+(e.outcome||"PENDING"));
+ document.getElementById("kalshiShadowHistory").textContent=lines.length?lines.join("\n"):"No signals captured yet. This tracker never sends orders.";
 }
-function kalshiCaptureShadowTrade(side,ticker,price){
- if(!side||!ticker||!Number.isFinite(price)||price<=0||price>=1)return;
- if(kalshiShadowTrades.some(t=>t.ticker===ticker&&t.side===side))return;
- kalshiShadowTrades.push({time:Date.now(),ticker,side,price,priceText:"$"+price.toFixed(2),outcome:null,pnl:null});
- kalshiSaveShadowTrades();kalshiRenderShadowTrades();
+function kalshiCaptureSignal(action,ticker,up,down){
+ const match=action.match(/^(BUY|HOLD|EXIT WARNING|CASH OUT) (UP|DOWN)$/);
+ if(!match||!ticker)return;
+ const type=match[1],side=match[2];
+ if(kalshiSignalEvents.some(e=>e.ticker===ticker&&e.type===type&&e.side===side))return;
+ const quote=side==="UP"?up:down;
+ const price=Number(String(quote).replace("$",""));
+ kalshiSignalEvents.push({time:Date.now(),ticker,type,side,price:Number.isFinite(price)?price:null,priceText:Number.isFinite(price)?("$"+price.toFixed(2)):"--",outcome:null});
+ kalshiSaveSignalEvents();kalshiRenderShadowTrades();
+ if(type==="BUY"&&Number.isFinite(price)&&price>0&&price<1)kalshiCaptureShadowTrade(side,ticker,price);
 }
 async function kalshiResolveShadowTrades(){
- const pending=kalshiShadowTrades.filter(t=>!t.outcome);
- for(const trade of pending){
+ const pendingTickers=[...new Set([...kalshiSignalEvents.filter(e=>!e.outcome).map(e=>e.ticker),...kalshiShadowTrades.filter(t=>!t.outcome).map(t=>t.ticker)])];
+ for(const ticker of pendingTickers){
   try{
-   const data=await kalshiApi("market?ticker="+encodeURIComponent(trade.ticker));
+   const data=await kalshiApi("market?ticker="+encodeURIComponent(ticker));
    const m=data.market||{};
    const status=String(m.status||"").toLowerCase();
    const result=String(m.result||"").toLowerCase();
    if(!["settled","finalized"].includes(status)||!["yes","no"].includes(result))continue;
-   const won=(trade.side==="UP"&&result==="yes")||(trade.side==="DOWN"&&result==="no");
-   trade.outcome=won?"WIN":"LOSS";
-   trade.pnl=won?1-trade.price:-trade.price;
-  }catch(e){/* Keep pending until the market can be checked again. */}
+   for(const event of kalshiSignalEvents.filter(e=>e.ticker===ticker&&!e.outcome)){
+    if(event.type==="CASH OUT")event.outcome="SETTLED";
+    else event.outcome=((event.side==="UP"&&result==="yes")||(event.side==="DOWN"&&result==="no"))?"MATCH":"MISS";
+   }
+   for(const trade of kalshiShadowTrades.filter(t=>t.ticker===ticker&&!t.outcome)){
+    const won=(trade.side==="UP"&&result==="yes")||(trade.side==="DOWN"&&result==="no");
+    trade.outcome=won?"WIN":"LOSS";
+    trade.pnl=won?1-trade.price:-trade.price;
+   }
+  }catch(e){/* Leave unresolved until the market can be checked again. */}
  }
- kalshiSaveShadowTrades();kalshiRenderShadowTrades();
+ kalshiSaveSignalEvents();kalshiSaveShadowTrades();kalshiRenderShadowTrades();
 }
 function kalshiRecordDecision(action,ticker,score,up,down,reason){
  const now=Date.now();
@@ -1685,7 +1710,7 @@ async function updateKalshiAutoPreview(){
  get("kalshiAutoDownAsk").textContent=down;
  const chosen=side==="UP"?up:side==="DOWN"?down:null;
  get("kalshiAutoPrice").textContent=chosen||"--";
- if(side&&chosen&&chosen!=="--")kalshiCaptureShadowTrade(side,ticker,Number(chosen.replace("$","")));
+ kalshiCaptureSignal(action,ticker,up,down);
  await kalshiResolveShadowTrades();
  if(side&&chosen&&chosen!=="--"){
   get("kalshiAutoReason").textContent="Candidate "+side+" signal detected. Indicative one-contract ask: "+chosen+". Stage 1 only records the opportunity; no order sent.";
