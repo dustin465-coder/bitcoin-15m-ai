@@ -1780,8 +1780,8 @@ async function kalshiRunPreflight(){
    ["noExistingPositionInSelectedMarket","No existing position in this market"],
    ["noRestingOrderInSelectedMarket","No resting order in this market"],
    ["fillsEndpointReadable","Fills history readable"],
-   ["entryMappingValidated","Entry mapping validated"],
-   ["exitMappingValidated","Exit mapping validated"],
+   ["entryMappingValidated","Entry mapping logic tested (not live order)"],
+   ["exitMappingValidated","Exit mapping logic tested (not live order)"],
    ["fillBasedLossControlValidated","Fill-based loss control validated"]
   ];
   const lines=labels.map(([key,label])=>(c[key]?"PASS":"NOT YET")+" · "+label);
