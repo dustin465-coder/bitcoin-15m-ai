@@ -347,6 +347,29 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
   <button id="kalshiBuyYes" type="button">Place DEMO BUY YES</button>
   <button id="kalshiSellYes" type="button" class="paper-off">Place DEMO SELL YES</button>
  </div>
+ <div class="paper-stat" style="margin-top:12px">
+  <strong>SUPERVISED ONE-CONTRACT DEMO TEST</strong>
+  <div class="grid" style="margin-top:8px">
+   <label class="small">Action
+    <select id="kalshiTestIntent" style="display:block;width:100%;margin-top:6px;padding:10px;border-radius:8px;background:#101b22;border:1pxpx solid #43545b;color:#edf3f4">
+     <option value="entry">ENTRY</option><option value="exit">EXIT</option>
+    </select>
+   </label>
+   <label class="small">Direction
+    <select id="kalshiTestDirection" style="display:block;width:100%;margin-top:6px;padding:10px;border-radius:8px;background:#101b22;border:1px solid #43545b;color:#edf3f4">
+     <option value="UP">UP</option><option value="DOWN">DOWN</option>
+    </select>
+   </label>
+  </div>
+  <div class="small" style="margin-top:8px">Limit price for the selected UP/DOWN contract. Exactly 1 contract. Fill-or-kill: no resting remainder should remain.</div>
+  <label class="small">Contract limit price (USD)
+   <input id="kalshiTestContractPrice" type="number" min="0.01" max="0.99" step="0.01" value="0.50" style="display:block;width:100%;margin-top:6px;padding:10px;border-radius:8px;background:#101b22;border:1px solid #43545b;color:#edf3f4">
+  </label>
+  <div class="paper-controls" style="margin-top:10px">
+   <button id="kalshiSupervisedTestOrder" type="button">Review supervised DEMO order</button>
+  </div>
+  <div class="small" id="kalshiSupervisedTestStatus" style="margin-top:8px;white-space:pre-wrap">No test order submitted. Review requires a second confirmation. Old order buttons remain locked.</div>
+ </div>
  <div class="small" id="kalshiPositions" style="margin-top:12px;white-space:pre-wrap">Positions: not loaded.</div>
  <div class="small" id="kalshiOrders" style="margin-top:8px;white-space:pre-wrap">Orders: not loaded.</div>
  <div class="small" id="kalshiFills" style="margin-top:8px;white-space:pre-wrap">Fills: not loaded.</div>
@@ -1819,6 +1842,24 @@ function setupKalshiAutoPreview(){
   }
  });
 }
+async function kalshiSubmitSupervisedTestOrder(){
+ const out=document.getElementById("kalshiSupervisedTestStatus");
+ try{
+  const ticker=document.getElementById("kalshiMarket").value;
+  const intent=document.getElementById("kalshiTestIntent").value;
+  const direction=document.getElementById("kalshiTestDirection").value;
+  const contractPrice=Number(document.getElementById("kalshiTestContractPrice").value);
+  if(!ticker)throw new Error("Choose an active BTC 15-minute market first.");
+  if(!Number.isFinite(contractPrice)||contractPrice<0.01||contractPrice>0.99)throw new Error("Enter a contract limit price from $0.01 to $0.99.");
+  const side=direction==="UP"?(intent==="entry"?"BID (buy UP/YES)":"ASK (sell UP/YES)"):(intent==="entry"?"ASK (buy DOWN/NO)":"BID (sell DOWN/NO)");
+  const message="KALSHI DEMO ONLY\n\n"+intent.toUpperCase()+" "+direction+"\nMarket: "+ticker+"\nLimit: $"+contractPrice.toFixed(2)+" per contract\nQuantity: exactly 1\nKalshi YES-book side: "+side+"\nTime in force: FILL OR KILL\n\nThis may fill immediately or cancel without a fill. Submit this one DEMO test order?";
+  if(!confirm(message))return;
+  out.textContent="Submitting one explicitly confirmed DEMO test order…";
+  const result=await kalshiApi("supervised-order",{method:"POST",body:JSON.stringify({ticker,intent,direction,contractPrice,confirmDemoOrder:true})});
+  out.textContent="DEMO order accepted.\n"+intent.toUpperCase()+" "+direction+" · "+ticker+"\nKalshi side: "+result.kalshiSide+" · requested contract price: $"+Number(result.requestedContractPrice).toFixed(2)+"\nOrder ID: "+(result.orderId||"not returned")+"\nReported fill count: "+result.fillCount+"\n"+(result.fullyFilled?"FULL FILL REPORTED — independently refresh positions and fills now.":"NO FULL FILL CONFIRMED — do not assume a position exists.")+"\n"+result.note;
+  await Promise.all([kalshiLoadPositions(),kalshiLoadOrders(),kalshiLoadFills(),kalshiLoadRiskStatus()]);
+ }catch(e){out.textContent="No confirmed order result: "+e.message;}
+}
 async function kalshiPlaceOrder(side){
  try{
   const ticker=document.getElementById("kalshiMarket").value;
@@ -1846,6 +1887,7 @@ function setupKalshiDemo(){
  document.getElementById("kalshiMarket").addEventListener("change",kalshiLoadLiveMarket);
  document.getElementById("kalshiBuyYes").addEventListener("click",()=>kalshiPlaceOrder("bid"));
  document.getElementById("kalshiSellYes").addEventListener("click",()=>kalshiPlaceOrder("ask"));
+ document.getElementById("kalshiSupervisedTestOrder").addEventListener("click",kalshiSubmitSupervisedTestOrder);
 }
 
 setupKalshiDemo();
