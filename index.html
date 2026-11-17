@@ -838,7 +838,7 @@ function playSignalTone(kind){
 }
 function announceSignal(action){
  const isBuy=action==="BUY UP"||action==="BUY DOWN";
- const isSell=action==="CASH OUT UP"||action==="CASH OUT DOWN";
+ const isSell=action==="CASH OUT UP"||action==="CASH OUT DOWN"||action==="EXIT WARNING UP"||action==="EXIT WARNING DOWN";
  if(!isBuy&&!isSell){lastAnnouncedAction=action;return;}
  if(action!==lastAnnouncedAction)playSignalTone(isBuy?"BUY":"SELL");
  lastAnnouncedAction=action;
@@ -848,7 +848,7 @@ function setupSoundAlerts(){
  if(!button||!status)return;
  const render=()=>{
   button.textContent=soundEnabled?"Turn sound alerts off":"Enable sound alerts";
-  status.textContent=soundEnabled?"Sound alerts on · BUY and CASH OUT":"Sound alerts off";
+  status.textContent=soundEnabled?"Sound alerts on · BUY, EXIT WARNING and CASH OUT":"Sound alerts off";
  };
  button.addEventListener("click",async()=>{
   if(soundEnabled){soundEnabled=false;localStorage.setItem("btcSoundAlerts","off");render();return;}
@@ -863,7 +863,7 @@ function setupSoundAlerts(){
  });
  if(soundEnabled){
   button.textContent="Turn sound alerts off";
-  status.textContent="Sound alerts saved · tap if sound does not play";
+  status.textContent="Sound alerts saved · BUY, EXIT WARNING and CASH OUT";
  }else render();
 }
 function updateDecision(){
@@ -912,18 +912,26 @@ function updateDecision(){
     const reverseSide=state.side==="UP"?"DOWN":"UP";
     const reverseConfirmations=reverseSide==="UP"?latestModel.upConfirmations:latestModel.downConfirmations;
     const reverseScore=latestModel.score*(reverseSide==="UP"?1:-1);
-    const clearReversal=reverseProbability>=probabilityModel.MIN_CONFIDENCE&&
-     (reverseConfirmations>=1||reverseScore>=12);
-    const lostEdge=heldProbability<0.55;
-    const nearSettlement=remaining<=30000;
+    const reversalSupport=reverseConfirmations>=1||reverseScore>=12;
+    const clearReversal=reverseProbability>=0.60&&reversalSupport;
+    const lostEdge=heldProbability<0.60;
+    const nearSettlement=remaining<=60000;
+    const earlyWarning=!state.exitWarningAt&&(
+     heldProbability<0.65||(reverseProbability>=0.55&&reversalSupport)||remaining<=90000
+    );
     if(clearReversal||lostEdge||nearSettlement){
      state.status="exited";
      state.exitedAt=now;
      state.lastSignalAt=now;
-     state.exitReason=clearReversal?"The model now favors the opposite side.":nearSettlement?"This round is close to settlement.":"The estimated chance for this direction weakened below 55%.";
+     state.exitReason=clearReversal?"The opposite direction reached 60% estimated chance with technical support.":nearSettlement?"This round is within 60 seconds of settlement.":"The held direction's estimated chance weakened below 60%.";
      writeSignalState(state);
      action="CASH OUT "+state.side;
      reason=state.exitReason+" Exit the earlier suggested direction if you entered it. A fresh entry can appear after the cooldown if conditions qualify.";
+    }else if(state.exitWarningAt||earlyWarning){
+     if(!state.exitWarningAt){state.exitWarningAt=now;state.exitWarningReason=heldProbability<0.65?"The held direction's estimated chance fell below 65%.":remaining<=90000?"This round is within 90 seconds of settlement.":"The opposite direction is gaining strength.";}
+     writeSignalState(state);
+     action="EXIT WARNING "+state.side;
+     reason=state.exitWarningReason+" Consider reducing risk or preparing to exit. The dashboard does not know whether you entered; CASH OUT will appear if the stronger exit conditions are met.";
     }else{
      action="HOLD "+state.side;
      reason="The model still favors the earlier BUY direction. Continue holding only if you entered it; the dashboard does not know whether you bought.";
@@ -974,13 +982,14 @@ function updateDecision(){
 
  const isBuy=action==="BUY UP"||action==="BUY DOWN";
  const isHold=action==="HOLD UP"||action==="HOLD DOWN";
+ const isWarning=action==="EXIT WARNING UP"||action==="EXIT WARNING DOWN";
  const isCashOut=action==="CASH OUT UP"||action==="CASH OUT DOWN";
  const side=displaySide||(action.endsWith("UP")?"UP":action.endsWith("DOWN")?"DOWN":null);
- const actionColor=isCashOut?"red":side==="UP"?"green":side==="DOWN"?"red":"yellow";
+ const actionColor=isCashOut||isWarning?"red":side==="UP"?"green":side==="DOWN"?"red":"yellow";
  $("signal").textContent=action;
  $("signal").className="decision-action "+actionColor;
  card.className="decision-card "+(side==="UP"?"buy-up":side==="DOWN"?"buy-down":"wait");
- $("decisionState").textContent=isBuy?"Fresh entry signal":isHold?"Hold signal · if entered":isCashOut?"Exit signal · if entered":"Stand aside";
+ $("decisionState").textContent=isBuy?"Fresh entry signal":isHold?"Hold signal · if entered":isWarning?"Early exit warning":isCashOut?"Exit signal · if entered":"Stand aside";
  $("signalReason").textContent=reason;
  $("decisionModel").textContent=direction;
  $("decisionScore").textContent=Math.abs(latestModel.score).toFixed(0)+" technical";
