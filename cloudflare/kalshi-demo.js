@@ -91,40 +91,56 @@ async function signedKalshiRequest(env, method, endpoint, body) {
 function utcDayKey() {
   return new Date().toISOString().slice(0, 10);
 }
-function balanceToDollars(balance) {
+function dollarsFromBalance(balance) {
   if (balance && balance.balance_dollars != null) return Number(balance.balance_dollars);
   if (balance && balance.balance != null) return Number(balance.balance) / 100;
   throw new Error("Kalshi balance response did not contain a recognized balance field.");
 }
+function dollarsFromPortfolioValue(balance) {
+  if (balance && balance.portfolio_value_dollars != null) return Number(balance.portfolio_value_dollars);
+  if (balance && balance.portfolio_value != null) return Number(balance.portfolio_value) / 100;
+  return 0;
+}
 async function getRiskSnapshot(env) {
   if (!env.BOT_STATE) throw new Error("The BOT_STATE KV binding is missing. Add it in Worker Settings > Bindings.");
-  const [balance, positions] = await Promise.all([
+  const [balance, positions, orders] = await Promise.all([
     signedKalshiRequest(env, "GET", "/portfolio/balance"),
-    signedKalshiRequest(env, "GET", "/portfolio/positions?limit=100"),
+    signedKalshiRequest(env, "GET", "/portfolio/positions?limit=1000"),
+    signedKalshiRequest(env, "GET", "/portfolio/orders?limit=200"),
   ]);
-  const currentBalance = balanceToDollars(balance);
+  const cash = dollarsFromBalance(balance);
+  const portfolioValue = dollarsFromPortfolioValue(balance);
+  const equity = cash + portfolioValue;
+  if (![cash, portfolioValue, equity].every(Number.isFinite)) throw new Error("Could not safely calculate DEMO account equity.");
   const dayKey = utcDayKey();
   const key = "risk:daily:" + dayKey;
   let record = await env.BOT_STATE.get(key, "json");
   if (!record) {
-    record = { day: dayKey, startingBalance: currentBalance, createdAt: new Date().toISOString() };
+    record = { day: dayKey, startingEquity: equity, createdAt: new Date().toISOString() };
     await env.BOT_STATE.put(key, JSON.stringify(record));
   }
-  const balanceDrawdown = Math.max(0, Number(record.startingBalance) - currentBalance);
-  const rows = positions.market_positions || positions.positions || [];
-  const openPositions = rows.filter(p => Math.abs(Number(p.position_fp ?? p.position ?? 0)) > 0);
+  const drawdown = Math.max(0, Number(record.startingEquity) - equity);
+  const positionRows = positions.market_positions || [];
+  const openPositions = positionRows.filter(p => Math.abs(Number(p.position_fp ?? 0)) > 0);
+  const orderRows = orders.orders || [];
+  const restingOrders = orderRows.filter(o => ["resting","pending","open"].includes(String(o.status || "").toLowerCase()) && Number(o.remaining_count_fp ?? o.remaining_count ?? 0) > 0);
   return {
     environment: "DEMO",
     day: dayKey,
-    startingBalance: Number(record.startingBalance),
-    currentBalance,
-    balanceDrawdown: Number(balanceDrawdown.toFixed(2)),
+    startingEquity: Number(record.startingEquity),
+    cashBalance: cash,
+    portfolioValue,
+    currentEquity: equity,
+    balanceDrawdown: Number(drawdown.toFixed(2)),
     dailyLossLimit: 5,
     maxEntryCost: 1,
     maxOpenPositions: 1,
     openPositionCount: openPositions.length,
+    restingOrderCount: restingOrders.length,
+    riskLimitReached: drawdown >= 5,
+    entryAllowed: drawdown < 5 && openPositions.length === 0 && restingOrders.length === 0,
     tradingEnabled: false,
-    note: "Read-only safety check. Drawdown uses account balance and does not include unrealized losses on open positions. Automatic order execution remains disabled.",
+    note: "Read-only safety precheck. Equity includes cash plus Kalshi portfolio value; it is not a substitute for verified fill-by-fill realized P&L. Automatic order execution remains disabled.",
   };
 }
 
