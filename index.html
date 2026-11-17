@@ -1550,7 +1550,7 @@ async function kalshiLoadMarkets(){
   }).sort((a,b)=>Date.parse(a.close_time)-Date.parse(b.close_time));
   select.innerHTML="";
   if(!markets.length){
-   select.add(new Option("No currently active 15-minute BTC markets","");
+   select.add(new Option("No currently active 15-minute BTC markets",""));
    select.value="";
    kalshiSetMessage("No active, unexpired 15-minute BTC markets are available right now. Monitoring will keep checking.",true);
    kalshiLastMarketRefresh=Date.now();
