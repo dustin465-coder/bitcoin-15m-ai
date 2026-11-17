@@ -136,6 +136,15 @@ export async function handleKalshiRequest(request, env, url) {
       return json({environment:"DEMO", markets, cursor:data.cursor || null}, 200, allowedOrigin);
     }
 
+    if (url.pathname === "/kalshi/market" && request.method === "GET") {
+      const ticker = String(url.searchParams.get("ticker") || "").trim();
+      if (!/^[A-Z0-9_-]{3,80}$/.test(ticker)) throw new Error("Choose a valid market ticker.");
+      const response = await fetch(BASE + "/markets/" + encodeURIComponent(ticker), {headers:{"Accept":"application/json"}});
+      const data = await response.json();
+      if (!response.ok) throw new Error("Kalshi market quote failed: " + (data.message || response.status));
+      return json({environment:"DEMO", market:data.market || data}, 200, allowedOrigin);
+    }
+
     if (url.pathname === "/kalshi/positions" && request.method === "GET") {
       const data = await signedKalshiRequest(env, "GET", "/portfolio/positions?limit=100");
       return json({environment:"DEMO", ...data}, 200, allowedOrigin);
