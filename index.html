@@ -1480,7 +1480,7 @@ async function kalshiConnect(){
 }
 async function kalshiLoadMarkets(){
  try{
-  const data=await kalshiApi("markets?status=open&limit=100");
+  const data=await kalshiApi("markets?status=open&limit=1000");
   const select=document.getElementById("kalshiMarket");
   select.innerHTML="";
   const markets=data.markets||[];
