@@ -1796,7 +1796,7 @@ async function kalshiLoadRiskStatus(){
  if(!el)return;
  try{
   const r=await kalshiApi("risk-status");
-  el.textContent="DEMO only · starting equity $"+r.startingEquity.toFixed(2)+" · cash $"+r.cashBalance.toFixed(2)+" · portfolio value $"+r.portfolioValue.toFixed(2)+" · current equity $"+r.currentEquity.toFixed(2)+" · drawdown $"+r.balanceDrawdown.toFixed(2)+" / $"+r.dailyLossLimit.toFixed(2)+" · open positions "+r.openPositionCount+" / "+r.maxOpenPositions+" · resting orders "+r.restingOrderCount+" · entry precheck "+(r.entryAllowed?"PASS":"BLOCKED")+" · automatic orders DISABLED. "+r.note;
+  el.textContent="DEMO only · starting equity $"+r.startingEquity.toFixed(2)+" · cash $"+r.cashBalance.toFixed(2)+" · portfolio value $"+r.portfolioValue.toFixed(2)+" · current equity $"+r.currentEquity.toFixed(2)+" · equity drawdown $"+r.balanceDrawdown.toFixed(2)+" / $"+r.dailyLossLimit.toFixed(2)+" · today fills "+(r.dailyFillAudit?.fillCount??"unavailable")+" · fees $"+(r.dailyFillAudit?.feeCostDollars??"--")+" · fill audit "+(r.fillAuditComplete?"COMPLETE":"BLOCKED")+" · open positions "+r.openPositionCount+" / "+r.maxOpenPositions+" · resting orders "+r.restingOrderCount+" · entry precheck "+(r.entryAllowed?"PASS":"BLOCKED")+" · automatic orders DISABLED. "+r.note;
  }catch(e){el.textContent="Safety check unavailable: "+e.message;}
 }
 function setupKalshiAutoPreview(){
