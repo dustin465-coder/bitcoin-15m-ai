@@ -398,7 +398,12 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 </div>
 <div class="paper-stat" style="margin-top:10px">
  <strong>SERVER-SIDE DEMO SAFETY CHECK</strong>
- <div class="small" id="kalshiRiskStatus" style="margin-top:7px">Not checked. Deploy the updated Worker code and connect to Kalshi DEMO.</div>
+ <div class="small" id="kalshiRiskStatus" style="margin-top:7px">Not checked. Connect to Kalshi DEMO.</div>
+ <div class="paper-controls" style="margin-top:8px">
+  <button id="kalshiPreflightButton" type="button" class="paper-off">Run read-only trade preflight</button>
+  <span class="pill">ORDER SUBMISSION LOCKED</span>
+ </div>
+ <div class="small" id="kalshiPreflightStatus" style="margin-top:7px">Preflight not run. This check reads market, positions, resting orders and fills. It never sends an order.</div>
 </div>
 </section>
 
@@ -1759,6 +1764,33 @@ async function updateKalshiAutoPreview(){
   kalshiAutoPreviewInFlight=false;
  }
 }
+async function kalshiRunPreflight(){
+ const el=document.getElementById("kalshiPreflightStatus");
+ const ticker=document.getElementById("kalshiMarket")?.value;
+ if(!el)return;
+ if(!ticker){el.textContent="Choose an active BTC market first.";return;}
+ el.textContent="Running read-only checks for "+ticker+"…";
+ try{
+  const r=await kalshiApi("preflight?ticker="+encodeURIComponent(ticker));
+  const c=r.checks||{};
+  const labels=[
+   ["demoEnvironment","DEMO environment"],
+   ["marketActive","Market active and unexpired"],
+   ["bothAsksAvailable","Both UP/DOWN asks available"],
+   ["noExistingPositionInSelectedMarket","No existing position in this market"],
+   ["noRestingOrderInSelectedMarket","No resting order in this market"],
+   ["fillsEndpointReadable","Fills history readable"],
+   ["entryMappingValidated","Entry mapping validated"],
+   ["exitMappingValidated","Exit mapping validated"],
+   ["fillBasedLossControlValidated","Fill-based loss control validated"]
+  ];
+  const lines=labels.map(([key,label])=>(c[key]?"PASS":"NOT YET")+" · "+label);
+  lines.push("Order submission: LOCKED");
+  el.textContent="Read-only preflight · "+r.ticker+" · "+r.passedChecks+"/"+r.totalChecks+" checks passed\n"+lines.join("\n")+"\n"+r.note;
+ }catch(e){
+  el.textContent="Preflight unavailable: "+e.message+". If this says Unknown Kalshi demo endpoint, the updated Cloudflare Worker still needs to be deployed.";
+ }
+}
 async function kalshiLoadRiskStatus(){
  const el=document.getElementById("kalshiRiskStatus");
  if(!el)return;
@@ -1802,6 +1834,7 @@ function setupKalshiDemo(){
  const saved=localStorage.getItem(KALSHI_WORKER_KEY);
  if(saved)document.getElementById("kalshiWorkerUrl").value=saved;
  document.getElementById("kalshiConnect").addEventListener("click",kalshiConnect);
+ document.getElementById("kalshiPreflightButton").addEventListener("click",kalshiRunPreflight);
  document.getElementById("kalshiRefresh").addEventListener("click",kalshiConnect);
  document.getElementById("kalshiLoadMarkets").addEventListener("click",kalshiLoadMarkets);
  document.getElementById("kalshiLoadPositions").addEventListener("click",kalshiLoadPositions);
