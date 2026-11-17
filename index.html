@@ -328,6 +328,14 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
    <select id="kalshiMarket" style="display:block;width:100%;margin-top:6px;padding:11px;border-radius:8px;background:#101b22;border:1px solid #43545b;color:#edf3f4"><option value="">Connect and find markets first</option></select>
   </label>
  </div>
+ <div class="paper-stat" style="margin-top:12px">
+  <strong>LIVE KALSHI DEMO MARKET PRICES</strong>
+  <div class="grid" style="margin-top:8px">
+   <div><span class="small">UP · best ask to buy</span><strong id="kalshiLiveUp" style="display:block;font-size:22px">--</strong><span class="small" id="kalshiLiveUpBid">Bid: --</span></div>
+   <div><span class="small">DOWN · best ask to buy</span><strong id="kalshiLiveDown" style="display:block;font-size:22px">--</strong><span class="small" id="kalshiLiveDownBid">Bid: --</span></div>
+  </div>
+  <div class="small" id="kalshiLiveMeta" style="margin-top:8px">Choose a market to load live prices.</div>
+ </div>
  <div class="grid" style="margin-top:12px">
   <label class="small">Limit price (USD)
    <input id="kalshiPrice" type="number" min="0.01" max="0.99" step="0.01" value="0.01" style="display:block;width:100%;margin-top:6px;padding:11px;border-radius:8px;background:#101b22;border:1px solid #43545b;color:#edf3f4">
@@ -1490,6 +1498,22 @@ async function kalshiLoadMarkets(){
   kalshiSetMessage("Loaded "+markets.length+" open Bitcoin market(s) from Kalshi DEMO.");
  }catch(e){kalshiSetMessage(e.message,true);}
 }
+async function kalshiLoadLiveMarket(){
+ const ticker=document.getElementById("kalshiMarket").value;
+ const up=document.getElementById("kalshiLiveUp"), down=document.getElementById("kalshiLiveDown");
+ const upBid=document.getElementById("kalshiLiveUpBid"), downBid=document.getElementById("kalshiLiveDownBid");
+ const meta=document.getElementById("kalshiLiveMeta");
+ if(!ticker){up.textContent="--";down.textContent="--";upBid.textContent="Bid: --";downBid.textContent="Bid: --";meta.textContent="Choose a market to load live prices.";return;}
+ try{
+  const data=await kalshiApi("market?ticker="+encodeURIComponent(ticker));
+  const m=data.market||{};
+  const fmt=v=>{const n=Number(v);return Number.isFinite(n)?"$"+n.toFixed(4):"--";};
+  up.textContent=fmt(m.yes_ask_dollars); down.textContent=fmt(m.no_ask_dollars);
+  upBid.textContent="Bid: "+fmt(m.yes_bid_dollars); downBid.textContent="Bid: "+fmt(m.no_bid_dollars);
+  const close=m.close_time?new Date(m.close_time).toLocaleTimeString():"not supplied";
+  meta.textContent="Market: "+ticker+" · status: "+(m.status||"unknown")+" · closes: "+close+" · updated: "+new Date().toLocaleTimeString();
+ }catch(e){meta.textContent="Live price error: "+e.message;}
+}
 async function kalshiLoadPositions(){
  try{
   const data=await kalshiApi("positions");
@@ -1528,11 +1552,13 @@ function setupKalshiDemo(){
  document.getElementById("kalshiLoadMarkets").addEventListener("click",kalshiLoadMarkets);
  document.getElementById("kalshiLoadPositions").addEventListener("click",kalshiLoadPositions);
  document.getElementById("kalshiLoadOrders").addEventListener("click",kalshiLoadOrders);
+ document.getElementById("kalshiMarket").addEventListener("change",kalshiLoadLiveMarket);
  document.getElementById("kalshiBuyYes").addEventListener("click",()=>kalshiPlaceOrder("bid"));
  document.getElementById("kalshiSellYes").addEventListener("click",()=>kalshiPlaceOrder("ask"));
 }
 
 setupKalshiDemo();
+setInterval(()=>{if(document.getElementById("kalshiMarket").value)kalshiLoadLiveMarket();},5000);
 </script>
 </body>
 </html>
