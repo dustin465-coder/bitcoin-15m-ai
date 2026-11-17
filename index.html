@@ -367,6 +367,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
   </label>
   <div class="paper-controls" style="margin-top:10px">
    <button id="kalshiSupervisedTestOrder" type="button">Review supervised DEMO order</button>
+   <button id="kalshiVerifySupervisedEndpoint" type="button" class="paper-off">Verify server endpoint (no order)</button>
   </div>
   <div class="small" id="kalshiSupervisedTestStatus" style="margin-top:8px;white-space:pre-wrap">No test order submitted. Review requires a second confirmation. Old order buttons remain locked.</div>
  </div>
@@ -1842,6 +1843,15 @@ function setupKalshiAutoPreview(){
   }
  });
 }
+async function kalshiVerifySupervisedEndpoint(){
+ const out=document.getElementById('kalshiSupervisedTestStatus');
+ try{
+  out.textContent='Checking Cloudflare deployment. No order will be sent…';
+  const r=await kalshiApi('supervised-order-check');
+  const ok=r.environment==='DEMO'&&r.supervisedOrderRouteInstalled===true&&r.explicitConfirmationRequired===true&&r.maximumContractsPerOrder===1&&r.fillOrKill===true&&r.mappingTestsPassed===true&&r.legacyOrderRouteLocked===true&&r.orderSent===false;
+  out.textContent=(ok?'SERVER ENDPOINT VERIFIED':'SERVER CHECK INCOMPLETE')+'\nEnvironment: '+r.environment+'\nSupervised endpoint installed: '+r.supervisedOrderRouteInstalled+'\nExplicit confirmation: '+r.explicitConfirmationRequired+'\nMaximum contracts: '+r.maximumContractsPerOrder+'\nFill-or-kill: '+r.fillOrKill+'\nEntry/exit mapping tests: '+r.mappingTestsPassed+'\nOld order route locked: '+r.legacyOrderRouteLocked+'\nOrder sent: '+r.orderSent+'\nChecked: '+r.checkedAt;
+ }catch(e){out.textContent='SERVER ENDPOINT NOT VERIFIED\n'+e.message+'\nNo order was sent.';}
+}
 async function kalshiSubmitSupervisedTestOrder(){
  const out=document.getElementById("kalshiSupervisedTestStatus");
  try{
@@ -1888,6 +1898,7 @@ function setupKalshiDemo(){
  document.getElementById("kalshiBuyYes").addEventListener("click",()=>kalshiPlaceOrder("bid"));
  document.getElementById("kalshiSellYes").addEventListener("click",()=>kalshiPlaceOrder("ask"));
  document.getElementById("kalshiSupervisedTestOrder").addEventListener("click",kalshiSubmitSupervisedTestOrder);
+ document.getElementById("kalshiVerifySupervisedEndpoint").addEventListener("click",kalshiVerifySupervisedEndpoint);
 }
 
 setupKalshiDemo();
