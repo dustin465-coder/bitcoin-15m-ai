@@ -267,6 +267,46 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 </div>
 </section>
 
+<section class="card" id="historicalReplayCard">
+<h2>ACCELERATED HISTORICAL BTC REPLAY</h2>
+<div class="small">Downloads completed Coinbase BTC-USD 15-minute candles and replays the dashboard's existing technical score (EMA, RSI, MACD, Bollinger, VWAP, volume, momentum and support/resistance). Each signal is generated from candles available at that moment, then checked against the next candle. This is a technical-only historical test—not the complete live TWAP/Polymarket/Kalshi strategy.</div>
+<div class="paper-controls" style="margin-top:10px">
+ <label class="small">History range
+  <select id="replayDays" style="display:block;margin-top:4px;padding:9px;background:#101b22;color:#edf3f4;border:1px solid #43545b;border-radius:8px">
+   <option value="7">7 days</option><option value="14">14 days</option><option value="30" selected>30 days</option>
+  </select>
+ </label>
+ <button id="replayRun" type="button">Download history &amp; run backtest</button>
+ <span class="small" id="replayStatus">Not run yet.</span>
+</div>
+<div class="paper-grid" style="margin-top:10px">
+ <div class="paper-stat"><span class="small">Completed candles</span><strong id="replayCandles">--</strong></div>
+ <div class="paper-stat"><span class="small">Directional signals</span><strong id="replaySignals">--</strong></div>
+ <div class="paper-stat"><span class="small">Correct directions</span><strong id="replayCorrect">--</strong></div>
+ <div class="paper-stat"><span class="small">Historical hit rate</span><strong id="replayAccuracy">--</strong></div>
+ <div class="paper-stat"><span class="small">Average next-candle move</span><strong id="replayAverage">--</strong></div>
+ <div class="paper-stat"><span class="small">Max drawdown · BTC proxy</span><strong id="replayDrawdown">--</strong></div>
+</div>
+<div class="small" id="replayCaveat" style="margin-top:7px;white-space:pre-wrap">No backtest results yet. This replay does not send orders.</div>
+<div class="paper-stat" style="margin-top:10px">
+ <strong>HISTORICAL CANDLE-BY-CANDLE REPLAY</strong>
+ <div class="paper-controls" style="margin-top:8px">
+  <button id="replayPrev" type="button" class="paper-off" disabled>Previous signal</button>
+  <button id="replayNext" type="button" class="paper-off" disabled>Next signal</button>
+  <label class="small">Replay signal
+   <input id="replaySlider" type="range" min="0" max="0" value="0" disabled style="display:block;width:220px">
+  </label>
+ </div>
+ <div class="grid" style="margin-top:8px">
+  <div><div class="small">Signal time (local)</div><div class="big" id="replayTime">--</div></div>
+  <div><div class="small">Model direction / score</div><div class="big" id="replayDirection">--</div></div>
+  <div><div class="small">Next candle outcome</div><div class="big" id="replayOutcome">--</div></div>
+  <div><div class="small">Next candle BTC move</div><div class="big" id="replayMove">--</div></div>
+ </div>
+ <div class="small" id="replayDetail" style="margin-top:8px">Run the historical test to enable replay.</div>
+</div>
+</section>
+
 <section class="card">
 <h2>V4 CHECKPOINT ACCURACY TRACKER</h2>
 <div class="small" id="v4Status">Waiting for the first six-checkpoint cloud collection...</div>
@@ -1364,6 +1404,88 @@ async function refreshPolymarket(){
  }
 }
 
+let replayCandlesData=[];
+let replaySignalsData=[];
+function replayRender(index){
+ if(!replaySignalsData.length)return;
+ const n=Math.max(0,Math.min(replaySignalsData.length-1,Number(index)||0));
+ const t=replaySignalsData[n],actual=t.actual;
+ document.getElementById("replaySlider").value=String(n);
+ document.getElementById("replayTime").textContent=new Date(t.time).toLocaleString();
+ document.getElementById("replayDirection").textContent=t.direction+" · score "+t.score;
+ document.getElementById("replayOutcome").textContent=actual+" · "+(t.correct?"MATCH":"MISS");
+ document.getElementById("replayOutcome").className="big "+(t.correct?"green":"red");
+ document.getElementById("replayMove").textContent=(t.returnBps>=0?"+":"")+t.returnBps.toFixed(2)+" bps";
+ document.getElementById("replayDetail").textContent="Signal candle closed at "+money(t.entry)+"; next completed candle closed at "+money(t.exit)+". Historical signal "+(n+1)+" of "+replaySignalsData.length+". No simulated contract fill or Kalshi P&L is inferred.";
+ document.getElementById("replayPrev").disabled=n===0;
+ document.getElementById("replayNext").disabled=n===replaySignalsData.length-1;
+}
+async function replayFetchHistory(days){
+ const end=Date.now();
+ const start=end-days*86400000;
+ const step=300*900*1000;
+ const map=new Map();
+ let cursorEnd=end;
+ let requests=0;
+ while(cursorEnd>start&&requests<Math.ceil(days*86400/(300*900))+2){
+  const cursorStart=Math.max(start,cursorEnd-step);
+  const url="https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=900&start="+encodeURIComponent(new Date(cursorStart).toISOString())+"&end="+encodeURIComponent(new Date(cursorEnd).toISOString());
+  const response=await fetch(url,{cache:"no-store"});
+  if(!response.ok)throw new Error("Coinbase historical data request failed (HTTP "+response.status+"). Try again in a minute.");
+  const rows=await response.json();
+  if(!Array.isArray(rows))throw new Error("Coinbase returned an unexpected candle format.");
+  for(const k of rows){
+   const c={time:Number(k[0])*1000,low:Number(k[1]),high:Number(k[2]),open:Number(k[3]),close:Number(k[4]),volume:Number(k[5])};
+   if(Number.isFinite(c.time)&&c.time>=start&&c.time+900000<=end&&[c.low,c.high,c.open,c.close,c.volume].every(Number.isFinite))map.set(c.time,c);
+  }
+  requests++;
+  cursorEnd=cursorStart;
+  document.getElementById("replayStatus").textContent="Downloading historical candles · request "+requests+" · "+map.size+" collected";
+ }
+ return [...map.values()].sort((a,b)=>a.time-b.time);
+}
+async function runHistoricalReplay(){
+ const button=document.getElementById("replayRun");
+ button.disabled=true;
+ document.getElementById("replayStatus").textContent="Starting historical download…";
+ try{
+  const days=Number(document.getElementById("replayDays").value);
+  const data=await replayFetchHistory(days);
+  if(data.length<100)throw new Error("Only "+data.length+" completed candles were returned; at least 100 are needed.");
+  replayCandlesData=data;
+  const trades=[];
+  let cumulative=0,peak=0,maxDrawdown=0;
+  for(let i=30;i<data.length-1;i++){
+   const model=analyze(data.slice(0,i+1),null);
+   if(!model||model.direction==="WAIT")continue;
+   const entry=data[i+1].open,exit=data[i+1].close;
+   const actual=exit>=entry?"UP":"DOWN";
+   const returnBps=(model.direction==="UP"?(exit-entry):(entry-exit))/entry*10000;
+   const correct=model.direction===actual;
+   cumulative+=returnBps;peak=Math.max(peak,cumulative);maxDrawdown=Math.max(maxDrawdown,peak-cumulative);
+   trades.push({time:data[i].time,direction:model.direction,score:Math.round(model.score),actual,correct,entry,exit,returnBps,cumulative});
+  }
+  replaySignalsData=trades;
+  const wins=trades.filter(t=>t.correct).length;
+  const avg=trades.length?trades.reduce((n,t)=>n+t.returnBps,0)/trades.length:0;
+  document.getElementById("replayCandles").textContent=data.length.toLocaleString();
+  document.getElementById("replaySignals").textContent=trades.length.toLocaleString();
+  document.getElementById("replayCorrect").textContent=wins.toLocaleString();
+  document.getElementById("replayAccuracy").textContent=trades.length?(100*wins/trades.length).toFixed(1)+"%":"N/A";
+  document.getElementById("replayAverage").textContent=trades.length?(avg>=0?"+":"")+avg.toFixed(2)+" bps":"N/A";
+  document.getElementById("replayDrawdown").textContent=trades.length?maxDrawdown.toFixed(2)+" bps":"N/A";
+  document.getElementById("replayCaveat").textContent="Historical technical-only test · "+days+" days · "+requestsText(data.length)+" · no live or DEMO orders. Returns are directional BTC price movement from next-candle open to close, not binary contract returns; excludes fees, spread, slippage and execution delays. Same-candle close signal is acted on at the next candle open to avoid look-ahead.";
+  const slider=document.getElementById("replaySlider");
+  slider.min="0";slider.max=String(Math.max(0,trades.length-1));slider.value="0";slider.disabled=!trades.length;
+  document.getElementById("replayPrev").disabled=true;
+  document.getElementById("replayNext").disabled=trades.length<2;
+  if(trades.length)replayRender(0);
+  else document.getElementById("replayDetail").textContent="No directional signals in this range.";
+  document.getElementById("replayStatus").textContent="Backtest complete · "+data.length.toLocaleString()+" candles · "+trades.length.toLocaleString()+" signals";
+ }catch(e){document.getElementById("replayStatus").textContent="Backtest stopped: "+e.message;}
+ finally{button.disabled=false;}
+}
+function requestsText(count){return "Coinbase BTC-USD 15-minute candles";}
 function runBacktest(){
  let tested=0,correct=0;
  for(let i=30;i<candles.length-1;i++){
@@ -2166,6 +2288,10 @@ function setupKalshiDemo(){
  document.getElementById("kalshiVerifySupervisedEndpoint").addEventListener("click",kalshiVerifySupervisedEndpoint);
 }
 
+document.getElementById("replayRun").addEventListener("click",runHistoricalReplay);
+document.getElementById("replaySlider").addEventListener("input",e=>replayRender(e.target.value));
+document.getElementById("replayPrev").addEventListener("click",()=>replayRender(Number(document.getElementById("replaySlider").value)-1));
+document.getElementById("replayNext").addEventListener("click",()=>replayRender(Number(document.getElementById("replaySlider").value)+1));
 setupKalshiDemo();
 setupKalshiLifecycle();
 setupKalshiAutoPreview();
