@@ -1540,7 +1540,7 @@ function runStrategyOptimizer(){
  const friction=Number(document.getElementById("optimizerFriction").value);
  if(!Number.isFinite(friction)||friction<0||friction>100){status.textContent="Enter friction from 0 to 100 basis points.";return;}
  const thresholds=[10,15,20,25,30],holds=[1,3,5],folds=[];
- const boundaries=[0.50,0.65,0.80,1.00].map(p=>Math.floor(data.length*p));
+ const boundaries=[0,0.50,0.65,0.80,1.00].map(p=>Math.floor(data.length*p));
  for(let f=0;f<3;f++){
   const trainEnd=boundaries[f+1],testStart=trainEnd,testEnd=boundaries[f+2];
   if(testEnd-testStart<40)continue;
