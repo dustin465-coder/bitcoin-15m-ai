@@ -421,7 +421,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
   </label>
  </div>
  <div class="paper-stat" style="margin-top:12px">
-  <strong>LIVE KALSHI DEMO MARKET PRICES</strong>
+  <strong>LIVE KALSHI PRODUCTION MARKET PRICES</strong>
   <div class="grid" style="margin-top:8px">
    <div><span class="small">UP · best ask to buy</span><strong id="kalshiLiveUp" style="display:block;font-size:22px">--</strong><span class="small" id="kalshiLiveUpBid">Bid: --</span></div>
    <div><span class="small">DOWN · best ask to buy</span><strong id="kalshiLiveDown" style="display:block;font-size:22px">--</strong><span class="small" id="kalshiLiveDownBid">Bid: --</span></div>
@@ -603,11 +603,11 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 
 <section class="card" id="autoPaperCard">
 <h2>AUTOMATIC DEMO BOT · KALSHI-STYLE PAPER TRADING</h2>
-<div class="small">Paper simulation only: no orders are sent. Entries use the selected Kalshi DEMO market’s live UP/DOWN ask price; exits use the corresponding live bid. Contract quantity is calculated from the actual quoted price and a $10 maximum position budget, including an estimated Kalshi taker fee. If a fresh quote is unavailable, the bot will not open or cash out a position.</div>
+<div class="small">Paper simulation only: no orders are sent. Entries use the selected Kalshi PRODUCTION market’s live UP/DOWN ask price; exits use the corresponding live bid. Contract quantity is calculated from the actual quoted price and a $10 maximum position budget, including an estimated Kalshi taker fee. If a fresh quote is unavailable, the bot will not open or cash out a position.</div>
 <div class="paper-controls" style="margin-top:12px">
-<button id="paperBotToggle" class="paper-off" type="button">Start demo bot</button>
+<button id="paperBotToggle" class="paper-off" type="button">Start paper bot</button>
 <button id="paperBotReset" type="button">Reset demo account</button>
-<span class="pill" id="paperBotState">BOT OFF</span>
+<span class="pill" id="paperBotState">PAPER BOT OFF</span>
 </div>
 <div class="paper-grid">
 <div class="paper-stat"><span class="small">Demo balance</span><strong id="paperBalance">$100.00</strong></div>
@@ -675,7 +675,8 @@ let activeRound=0;
 let openingReference=null;
 let openingTimestamp=null;
 let twapConnected=false;
-let marketQuotes=null;
+let kalshiMarketQuotes=null;
+let polykalshiMarketQuotes=null;
 // Audio permission does not survive a page reload in iOS Safari. Require a fresh tap each visit.
 let soundEnabled=false;
 let soundContext=null;
@@ -1143,8 +1144,8 @@ function updateSignalQuality(){
   const volumeScore=a.volRatio>=1.2?(a.last.close>a.last.open?1:a.last.close<a.last.open?-1:0):0;
   add("Volume context",volumeScore,10);
  }
- if(marketQuotes&&Number.isFinite(marketQuotes.up)&&Number.isFinite(marketQuotes.down)){
-  add("Polymarket",Math.max(-1,Math.min(1,(marketQuotes.up-marketQuotes.down)/0.20)),15);
+ if(polymarketQuotes&&Number.isFinite(polymarketQuotes.up)&&Number.isFinite(polymarketQuotes.down)){
+  add("Polymarket",Math.max(-1,Math.min(1,(polymarketQuotes.up-polymarketQuotes.down)/0.20)),15);
  }
  const total=parts.reduce((n,p)=>n+p.weight,0);
  if(!parts.length||!total){
@@ -1447,7 +1448,7 @@ async function refreshPolymarket(){
   }
   if(up!==null)$("polyUp").textContent=pct(up);
   if(down!==null)$("polyDown").textContent=pct(down);
-  marketQuotes={up,down};
+  polymarketQuotes={up,down};
   updateSignalQuality();
   $("marketStatus").textContent="Market checked "+new Date().toLocaleTimeString();
   $("marketLink").innerHTML='<a target="_blank" rel="noopener" href="https://polymarket.com/event/'+slug+'">Open current Polymarket market ↗</a>';
@@ -1794,7 +1795,7 @@ function paperTakerFee(price,contracts,multiplier=1){
  return Math.ceil(raw*100-1e-9)/100;
 }
 function paperLiveQuote(side,kind,expectedTicker){
- const q=marketQuotes;
+ const q=kalshiMarketQuotes;
  if(!q||Date.now()-q.fetchedAt>PAPER_QUOTE_MAX_AGE_MS||(expectedTicker&&q.ticker!==expectedTicker))return null;
  const price=side==="UP"?(kind==="ask"?q.yesAsk:q.yesBid):(kind==="ask"?q.noAsk:q.noBid);
  return Number.isFinite(price)&&price>0&&price<1?price:null;
@@ -1814,12 +1815,20 @@ function closePaperPosition(exitPrice,exitType,detail){
  paperBot.trades.push({time:nowServer(),side:p.side,contracts:p.contracts,entry:p.entryPrice,exit:price,entryFee:p.entryFee||0,exitFee,pnl,exitType,round:p.round,detail:detail||""});
  paperBot.trades=paperBot.trades.slice(-50);paperBot.position=null;
 }
-function settlePaperAtRoundBoundary(){
- const p=paperBot.position;if(!p||p.round===activeRound||!Number.isFinite(p.lastTwap)||!Number.isFinite(p.openingReference))return;
- const actualUp=p.lastTwap>=p.openingReference;
- const won=p.side==="UP"?actualUp:!actualUp;
- closePaperPosition(won?1:0,"SETTLEMENT",won?"Correct simulated direction":"Incorrect simulated direction");
- savePaperBot();
+async function kalshiResolvePaperPosition(){
+ const p=paperBot.position;
+ if(!p||!p.marketTicker||p.resolutionCheckInFlight)return;
+ p.resolutionCheckInFlight=true;
+ try{
+  const data=await kalshiPublicApi("markets/"+encodeURIComponent(p.marketTicker)),m=data.market||{},status=String(m.status||"").toLowerCase(),result=String(m.result||"").toLowerCase();
+  if(["settled","finalized"].includes(status)&&["yes","no"].includes(result)){
+   const won=(p.side==="UP"&&result==="yes")||(p.side==="DOWN"&&result==="no");
+   closePaperPosition(won?1:0,"KALSHI OFFICIAL SETTLEMENT",won?"Kalshi settled this contract at $1.00":"Kalshi settled this contract at $0.00");
+   savePaperBot();
+   $("paperBotMessage").textContent="Position settled from Kalshi's official result for "+p.marketTicker+". No BTC/TWAP proxy was used.";
+  }else $("paperBotMessage").textContent="Waiting for Kalshi's official settlement for "+p.marketTicker+". Current status: "+(status||"unknown")+".";
+ }catch(e){$("paperBotMessage").textContent="Waiting for official Kalshi settlement: "+e.message;}
+ finally{if(paperBot.position===p){p.resolutionCheckInFlight=false;savePaperBot();}}
 }
 function processPaperBot(action){
  if(!paperBot.enabled)return;
@@ -1834,7 +1843,7 @@ function processPaperBot(action){
   return;
  }
  if(action!=="BUY UP"&&action!=="BUY DOWN")return;
- if(!Number.isFinite(openingReference)||!Number.isFinite(twapValue)||activeRound<=0)return;
+ if(!kalshiMarketQuotes||Date.now()-kalshiMarketQuotes.fetchedAt>PAPER_QUOTE_MAX_AGE_MS||!kalshiMarketQuotes.ticker)return;
  const side=action==="BUY UP"?"UP":"DOWN";
  const ask=paperLiveQuote(side,"ask");
  if(ask===null){$("paperBotMessage").textContent="BUY signal detected, but no fresh Kalshi DEMO ask is available. No simulated trade opened.";return;}
@@ -1844,15 +1853,15 @@ function processPaperBot(action){
  const entryFee=paperTakerFee(ask,contracts);
  const cost=contracts*ask+entryFee;
  paperBot.bankroll-=cost;
- paperBot.position={side,round:activeRound,contracts,entryPrice:ask,cost,entryFee,feeMultiplier:1,openedAt:nowServer(),openingReference,lastTwap:twapValue,marketTicker:marketQuotes.ticker};
- $("paperBotMessage").textContent="Opened "+side+" paper position using live Kalshi DEMO ask "+money(ask)+": "+contracts+" contracts; contract cost "+money(contracts*ask)+", estimated entry fee "+money(entryFee)+", total "+money(cost)+". No real order was placed.";
+ paperBot.position={side,round:activeRound,contracts,entryPrice:ask,cost,entryFee,feeMultiplier:kalshiMarketQuotes.feeMultiplier||1,openedAt:nowServer(),marketTicker:kalshiMarketQuotes.ticker};
+ $("paperBotMessage").textContent="Opened "+side+" paper position using live Kalshi PRODUCTION ask "+money(ask)+": "+contracts+" contracts; contract cost "+money(contracts*ask)+", estimated entry fee "+money(entryFee)+", total "+money(cost)+". No real order was placed.";
  savePaperBot();
 }
 function renderPaperBot(){
  const el=id=>$(id);if(!el("paperBotToggle"))return;
- el("paperBotToggle").textContent=paperBot.enabled?"Pause demo bot":"Start demo bot";
+ el("paperBotToggle").textContent=paperBot.enabled?"Pause paper bot":"Start demo bot";
  el("paperBotToggle").className=paperBot.enabled?"paper-on":"paper-off";
- el("paperBotState").textContent=paperBot.enabled?"BOT RUNNING · SIMULATION ONLY":"BOT OFF";
+ el("paperBotState").textContent=paperBot.enabled?"PAPER BOT RUNNING · NO ORDERS":"BOT OFF";
  el("paperBalance").textContent=money(paperBot.bankroll);
  const closed=paperBot.trades;const pnl=closed.reduce((n,t)=>n+t.pnl,0);
  el("paperPnl").textContent=(pnl>=0?"+":"")+money(pnl);
@@ -1955,6 +1964,12 @@ async function kalshiApi(path,options={}){
  if(!response.ok)throw new Error(data.error||("Worker request failed: "+response.status));
  return data;
 }
+async function kalshiPublicApi(path){
+ const url="https://external-api.kalshi.com/trade-api/v2/"+path.replace(/^\//,"");
+ const response=await fetch(url,{cache:"no-store",headers:{"Accept":"application/json"}});
+ if(!response.ok)throw new Error("Kalshi public market-data request failed: HTTP "+response.status);
+ return response.json();
+}
 function kalshiMoney(value){const n=Number(value);return Number.isFinite(n)?"$"+n.toFixed(2):"--";}
 function kalshiSetMessage(message,isError=false){const el=document.getElementById("kalshiMessage");el.textContent=message;el.className="small "+(isError?"red":"yellow");}
 function kalshiRememberWorker(){const base=kalshiWorkerBase();if(base)localStorage.setItem(KALSHI_WORKER_KEY,base);}
@@ -1981,33 +1996,18 @@ async function kalshiConnect(){
 }
 async function kalshiLoadMarkets(){
  try{
-  const data=await kalshiApi("markets?status=open&limit=1000");
-  const select=document.getElementById("kalshiMarket");
-  const previous=select.value;
-  const now=Date.now();
-  const markets=(data.markets||[]).filter(m=>{
-   const status=String(m.status||"").toLowerCase();
-   const close=m.close_time?Date.parse(m.close_time):NaN;
-   return ["open","active"].includes(status) && Number.isFinite(close) && close>now;
-  }).sort((a,b)=>Date.parse(a.close_time)-Date.parse(b.close_time));
+  const data=await kalshiPublicApi("markets?series_ticker=KXBTC15M&status=open&limit=1000");
+  const select=document.getElementById("kalshiMarket"),previous=select.value,now=Date.now();
+  const markets=(data.markets||[]).filter(m=>String(m.ticker||"").startsWith("KXBTC15M-")&&String(m.status||"").toLowerCase()==="open"&&m.close_time&&Date.parse(m.close_time)>now).sort((x,y)=>Date.parse(x.close_time)-Date.parse(y.close_time));
   select.innerHTML="";
-  if(!markets.length){
-   select.add(new Option("No currently active 15-minute BTC markets",""));
-   select.value="";
-   kalshiSetMessage("No active, unexpired 15-minute BTC markets are available right now. Monitoring will keep checking.",true);
-   kalshiLastMarketRefresh=Date.now();
-   await kalshiLoadLiveMarket();
-   return;
-  }
-  select.add(new Option("Choose a current Bitcoin market",""));
-  markets.forEach(m=>select.add(new Option((m.title||m.ticker)+" · "+m.ticker,m.ticker)));
-  const kept=markets.some(m=>m.ticker===previous);
-  select.value=kept?previous:markets[0].ticker;
+  if(!markets.length){select.add(new Option("No active KXBTC15M market found",""));select.value="";kalshiSetMessage("No active production KXBTC15M market is available. The paper bot will not trade without a verified market.",true);kalshiLastMarketRefresh=Date.now();await kalshiLoadLiveMarket();return;}
+  select.add(new Option("Choose current live Bitcoin market",""));
+  markets.forEach(m=>select.add(new Option((m.title||"BTC 15-minute")+" · "+m.ticker,m.ticker)));
+  select.value=markets.some(m=>m.ticker===previous)?previous:markets[0].ticker;
   kalshiLastMarketRefresh=Date.now();
-  if(!kept)kalshiSetMessage("Automatically selected the next active BTC 15-minute market: "+select.value+".");
-  else kalshiSetMessage("Found "+markets.length+" active, unexpired BTC 15-minute market(s).");
+  kalshiSetMessage("Connected to Kalshi PRODUCTION public market data · "+markets.length+" active KXBTC15M market(s). Paper trades remain local simulations.");
   await kalshiLoadLiveMarket();
- }catch(e){kalshiSetMessage("Market refresh failed: "+e.message,true);}
+ }catch(e){kalshiSetMessage("Live Kalshi market discovery failed: "+e.message,true);}
 }
 function kalshiQuoteDollars(m,dollarField,centsField){
  const raw=m?.[dollarField];
@@ -2023,33 +2023,20 @@ function kalshiQuoteDollars(m,dollarField,centsField){
  return null;
 }
 async function kalshiLoadLiveMarket(){
- marketQuotes=null;
+ kalshiMarketQuotes=null;
  const ticker=document.getElementById("kalshiMarket").value;
- const up=document.getElementById("kalshiLiveUp"), down=document.getElementById("kalshiLiveDown");
- const upBid=document.getElementById("kalshiLiveUpBid"), downBid=document.getElementById("kalshiLiveDownBid");
- const meta=document.getElementById("kalshiLiveMeta");
- const buy=document.getElementById("kalshiBuyYes"), sell=document.getElementById("kalshiSellYes");
- if(!ticker){up.textContent="--";down.textContent="--";upBid.textContent="Bid: --";downBid.textContent="Bid: --";meta.textContent="Waiting for the next active BTC market.";buy.disabled=true;sell.disabled=true;return;}
+ const up=document.getElementById("kalshiLiveUp"),down=document.getElementById("kalshiLiveDown"),upBid=document.getElementById("kalshiLiveUpBid"),downBid=document.getElementById("kalshiLiveDownBid"),meta=document.getElementById("kalshiLiveMeta"),buy=document.getElementById("kalshiBuyYes"),sell=document.getElementById("kalshiSellYes");
+ if(!ticker){up.textContent="--";down.textContent="--";upBid.textContent="Bid: --";downBid.textContent="Bid: --";meta.textContent="Waiting for an active production KXBTC15M market.";buy.disabled=true;sell.disabled=true;return;}
  buy.disabled=true;sell.disabled=true;
  try{
-  const data=await kalshiApi("market?ticker="+encodeURIComponent(ticker));
-  const m=data.market||{};
-  const status=String(m.status||"").toLowerCase();
-  const closeMs=m.close_time?Date.parse(m.close_time):NaN;
-  const live=["open","active"].includes(status)&&Number.isFinite(closeMs)&&closeMs>Date.now();
-  const yesAsk=kalshiQuoteDollars(m,"yes_ask_dollars","yes_ask");
-  const noAsk=kalshiQuoteDollars(m,"no_ask_dollars","no_ask");
-  const yesBid=kalshiQuoteDollars(m,"yes_bid_dollars","yes_bid");
-  const noBid=kalshiQuoteDollars(m,"no_bid_dollars","no_bid");
-  const fmt=v=>v===null?"--":"$"+v.toFixed(4);
-  up.textContent=live?fmt(yesAsk):"--"; down.textContent=live?fmt(noAsk):"--";
-  upBid.textContent="Bid: "+(live?fmt(yesBid):"--"); downBid.textContent="Bid: "+(live?fmt(noBid):"--");
-  const close=m.close_time?new Date(m.close_time).toLocaleTimeString():"not supplied";
-  const quoteOk=live&&yesAsk!==null&&noAsk!==null;
-  marketQuotes={ticker,yesAsk,noAsk,yesBid,noBid,fetchedAt:Date.now()};
-  meta.textContent="Market: "+ticker+" · status: "+(m.status||"unknown")+" · closes: "+close+" · updated: "+new Date().toLocaleTimeString()+(quoteOk?" · live asks verified":live?" · waiting for both live asks":" · market closed/expired");
+  const data=await kalshiPublicApi("markets/"+encodeURIComponent(ticker)),m=data.market||{},status=String(m.status||"").toLowerCase(),closeMs=m.close_time?Date.parse(m.close_time):NaN,live=status==="open"&&Number.isFinite(closeMs)&&closeMs>Date.now();
+  const yesAsk=kalshiQuoteDollars(m,"yes_ask_dollars","yes_ask"),noAsk=kalshiQuoteDollars(m,"no_ask_dollars","no_ask"),yesBid=kalshiQuoteDollars(m,"yes_bid_dollars","yes_bid"),noBid=kalshiQuoteDollars(m,"no_bid_dollars","no_bid"),fmt=v=>v===null?"--":"$"+v.toFixed(4),quoteOk=live&&yesAsk!==null&&noAsk!==null;
+  up.textContent=live?fmt(yesAsk):"--";down.textContent=live?fmt(noAsk):"--";upBid.textContent="Bid: "+(live?fmt(yesBid):"--");downBid.textContent="Bid: "+(live?fmt(noBid):"--");
+  kalshiMarketQuotes={ticker,yesAsk,noAsk,yesBid,noBid,fetchedAt:Date.now(),feeMultiplier:Number(m.fee_multiplier)||1,closeTime:m.close_time||null};
+  meta.textContent="PRODUCTION market: "+ticker+" · "+status+" · closes "+(m.close_time?new Date(m.close_time).toLocaleTimeString():"unknown")+" · updated "+new Date().toLocaleTimeString()+(quoteOk?" · live asks verified":" · waiting for valid asks");
   buy.disabled=!quoteOk;sell.disabled=!quoteOk;
- }catch(e){meta.textContent="Live price error: "+e.message;buy.disabled=true;sell.disabled=true;}
+  if(paperBot&&paperBot.position)await kalshiResolvePaperPosition();
+ }catch(e){meta.textContent="Live Kalshi quote error: "+e.message;buy.disabled=true;sell.disabled=true;}
 }
 async function kalshiLoadPositions(){
  try{
@@ -2515,6 +2502,7 @@ setInterval(()=>{if(document.getElementById("kalshiConnectionState")?.textConten
 // One decision-monitor poller only (the button triggers an immediate first check).
 setInterval(()=>{if(!document.hidden)updateKalshiAutoPreview();},15000);
 setInterval(()=>{if(document.getElementById("kalshiMarket").value&&!document.hidden)kalshiLoadLiveMarket();},10000);
+setInterval(()=>{if(paperBot.position&&!document.hidden)kalshiResolvePaperPosition();},15000);
 </script>
 </body>
 </html>
