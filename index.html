@@ -1902,8 +1902,10 @@ let kalshiLedgerInFlight=false;
 function kalshiLedgerMoney(n){return (Number(n)<0?"-$":"$")+Math.abs(Number(n)||0).toFixed(2);}
 function kalshiFindModelSignal(trade){
  const events=JSON.parse(localStorage.getItem("kalshiSignalEventsV1")||"[]");
- const entry=events.filter(e=>e.ticker===trade.ticker&&e.side===trade.direction&&e.type==="BUY"&&Math.abs(Date.parse(e.time)-Date.parse(trade.entryTime||0))<15*60*1000);
- const exit=events.filter(e=>e.ticker===trade.ticker&&e.side===trade.direction&&["EXIT WARNING","CASH OUT"].includes(e.type)&&Math.abs(Date.parse(e.time)-Date.parse(trade.exitTime||0))<15*60*1000);
+ const ms=value=>typeof value==="number"?value:Date.parse(value||"");
+ const entryMs=ms(trade.entryTime),exitMs=ms(trade.exitTime);
+ const entry=events.filter(e=>e.ticker===trade.ticker&&e.side===trade.direction&&e.type==="BUY"&&Number.isFinite(ms(e.time))&&Math.abs(ms(e.time)-entryMs)<15*60*1000);
+ const exit=events.filter(e=>e.ticker===trade.ticker&&e.side===trade.direction&&["EXIT WARNING","CASH OUT"].includes(e.type)&&Number.isFinite(ms(e.time))&&Math.abs(ms(e.time)-exitMs)<15*60*1000);
  return (entry.length?"Entry signal logged":"No matching entry signal")+"; "+(exit.length?"exit signal logged":"no matching exit signal");
 }
 async function kalshiLoadTradeLedger(){
