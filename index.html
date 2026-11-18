@@ -334,7 +334,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 
 <section class="card" id="prospectiveDownCard">
 <h2>PROSPECTIVE DOWN-ONLY VALIDATION · LOCKED RULES</h2>
-<div class="small">Forward-only paper test. Fixed rules: DOWN score ≤ -30, enter at the next completed 15-minute candle OPEN, exit at the CLOSE after five 15-minute candles. One position at a time. No historical backfill and no Kalshi orders.</div>
+<div class="small">Connected to the main dashboard signal engine. This follows the same BUY UP, BUY DOWN, CASH OUT UP and CASH OUT DOWN decisions as the rest of the page. It does not run a separate DOWN-only model. Paper trade results are shared with the Kalshi-style paper bot and use live Kalshi DEMO quotes and estimated fees. No real orders are sent.</div>
 <div class="paper-controls" style="margin-top:9px">
  <button id="prospectiveStart" type="button">Start prospective tracker</button>
  <button id="prospectivePause" type="button" class="paper-off">Pause tracker</button>
@@ -347,14 +347,14 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
  <div class="paper-stat"><span class="small">Net BTC movement</span><strong id="prospectiveNet">--</strong></div>
  <div class="paper-stat"><span class="small">Maximum drawdown</span><strong id="prospectiveDD">--</strong></div>
  <div class="paper-stat"><span class="small">Open / pending</span><strong id="prospectiveOpen">0</strong></div>
- <div class="paper-stat"><span class="small">Rules</span><strong>DOWN · 30 · 5</strong></div>
+ <div class="paper-stat"><span class="small">Signal source</span><strong>MAIN MODEL</strong></div>
 </div>
 <div class="small" id="prospectiveDetail" style="margin-top:8px">The tracker only records new signals after you start it. Keep this dashboard open for continuous checks.</div>
 <div class="paper-stat" style="margin-top:9px;overflow-x:auto">
  <strong>RECENT PROSPECTIVE TRADES</strong>
- <table><thead><tr><th>Signal time</th><th>Score</th><th>Entry</th><th>Exit</th><th>Net bps*</th><th>Result</th></tr></thead>
- <tbody id="prospectiveRows"><tr><td colspan="6">No prospective trades recorded.</td></tr></tbody></table>
- <div class="small">*Net BTC price movement after a fixed 4 bps assumed round-trip friction. This is not Kalshi P&amp;L and does not represent a filled contract.</div>
+ <table><thead><tr><th>Time</th><th>Dashboard action</th><th>Model score</th><th>Kalshi quote</th><th>Directional estimate</th><th>Round</th></tr></thead>
+ <tbody id="prospectiveRows"><tr><td colspan="6">No dashboard signals recorded yet.</td></tr></tbody></table>
+ <div class="small">Trade count, win rate, P&amp;L and drawdown are read from the connected paper bot ledger. They are simulated results, not actual exchange fills.</div>
 </div>
 </section>
 
@@ -1344,6 +1344,7 @@ function updateDecision(){
   :"Waiting for probability estimate";
  updateSignalQuality();
  processPaperBot(action);
+ prospectiveObserve(action);
  announceSignal(action);
 }
 
@@ -1619,101 +1620,53 @@ function runStrategyOptimizer(){
  document.getElementById("optimizerNotes").textContent=notes.join("\n");
  status.textContent="Comparison complete · "+summaries.length+" scenarios · 3 chronological folds · no overlapping positions.";
 }
-const prospectiveKey="btcProspectiveDownV1";
-let prospectiveState=JSON.parse(localStorage.getItem(prospectiveKey)||"null")||{active:false,startedAt:null,lastSignalCandle:0,open:null,trades:[],events:[],lastCheck:null};
-let prospectiveTimer=null,prospectiveBusy=false;
+const prospectiveKey="btcSharedSignalTrackerV2";
+let prospectiveState=JSON.parse(localStorage.getItem(prospectiveKey)||"null")||{active:false,startedAt:null,lastKey:"",events:[]};
 function prospectiveSave(){try{localStorage.setItem(prospectiveKey,JSON.stringify(prospectiveState));}catch(e){}}
+function prospectiveObserve(action){
+ if(!prospectiveState.active)return;
+ if(!["BUY UP","BUY DOWN","CASH OUT UP","CASH OUT DOWN"].includes(action))return;
+ const key=activeRound+"|"+action;
+ if(key===prospectiveState.lastKey)return;
+ prospectiveState.lastKey=key;
+ const side=action.endsWith("UP")?"UP":"DOWN";
+ const price=action.startsWith("BUY")?paperLiveQuote(side,"ask"):paperLiveQuote(side,"bid");
+ prospectiveState.events.unshift({time:Date.now(),round:activeRound,action,side,price,score:latestModel&&Number.isFinite(latestModel.score)?Math.round(latestModel.score):null,confidence:liveProbability&&liveProbability.valid?Math.round((side==="UP"?liveProbability.probabilityUp:liveProbability.probabilityDown)*100):null});
+ prospectiveState.events=prospectiveState.events.slice(0,1000);
+ prospectiveSave();prospectiveStats();
+}
 function prospectiveStats(){
- const rows=prospectiveState.trades||[];
- const wins=rows.filter(t=>t.netBps>0).length;
+ const events=prospectiveState.events||[];
+ const buys=events.filter(e=>e.action.startsWith("BUY"));
+ const trades=paperBot&&Array.isArray(paperBot.trades)?paperBot.trades:[];
+ const pnl=trades.reduce((n,t)=>n+t.pnl,0);
  let equity=0,peak=0,dd=0;
- rows.forEach(t=>{equity+=t.netBps;peak=Math.max(peak,equity);dd=Math.max(dd,peak-equity);});
- document.getElementById("prospectiveTrades").textContent=String(rows.length);
- document.getElementById("prospectiveWin").textContent=rows.length?(100*wins/rows.length).toFixed(1)+"%":"--";
- document.getElementById("prospectiveNet").textContent=rows.length?(equity>=0?"+":"")+equity.toFixed(2)+" bps":"--";
- document.getElementById("prospectiveDD").textContent=rows.length?dd.toFixed(2)+" bps":"--";
- document.getElementById("prospectiveOpen").textContent=prospectiveState.open?"1":"0";
+ trades.forEach(t=>{equity+=t.pnl;peak=Math.max(peak,equity);dd=Math.max(dd,peak-equity);});
+ document.getElementById("prospectiveTrades").textContent=String(trades.length);
+ document.getElementById("prospectiveWin").textContent=trades.length?(100*trades.filter(t=>t.pnl>0).length/trades.length).toFixed(1)+"%":"--";
+ document.getElementById("prospectiveNet").textContent=trades.length?(pnl>=0?"+":"")+money(pnl):"--";
+ document.getElementById("prospectiveDD").textContent=trades.length?money(dd):"--";
+ document.getElementById("prospectiveOpen").textContent=paperBot&&paperBot.position?paperBot.position.side+" · "+paperBot.position.contracts:"0";
+ document.getElementById("prospectiveStatus").textContent=(prospectiveState.active?"FOLLOWING MAIN DASHBOARD SIGNALS":"PAUSED")+" · "+events.length+" recorded signal events";
  const body=document.getElementById("prospectiveRows");
- body.innerHTML=rows.slice(-12).reverse().map(t=>"<tr><td>"+new Date(t.signalTime).toLocaleString()+"</td><td>"+t.score+"</td><td>"+Number(t.entry).toFixed(2)+"</td><td>"+Number(t.exit).toFixed(2)+"</td><td>"+(t.netBps>=0?"+":"")+t.netBps.toFixed(2)+"</td><td>"+(t.netBps>0?"WIN":"LOSS")+"</td></tr>").join("")||'<tr><td colspan="6">No prospective trades recorded.</td></tr>';
- document.getElementById("prospectiveStatus").textContent=(prospectiveState.active?"RUNNING":"PAUSED")+" · last checked "+(prospectiveState.lastCheck?new Date(prospectiveState.lastCheck).toLocaleTimeString():"not yet");
-}
-async function prospectiveFetch(){
- const end=Date.now(),start=end-3*86400000;
- const url="https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=900&start="+encodeURIComponent(new Date(start).toISOString())+"&end="+encodeURIComponent(new Date(end).toISOString());
- const response=await fetch(url,{cache:"no-store"});
- if(!response.ok)throw new Error("Coinbase candle feed returned HTTP "+response.status);
- const rows=await response.json();
- return rows.map(k=>({time:Number(k[0])*1000,low:Number(k[1]),high:Number(k[2]),open:Number(k[3]),close:Number(k[4]),volume:Number(k[5])})).filter(c=>c.time+900000<=end&&[c.time,c.low,c.high,c.open,c.close,c.volume].every(Number.isFinite)).sort((x,y)=>x.time-y.time);
-}
-async function prospectiveCheck(force=false){
- if(prospectiveBusy)return;
- if(!prospectiveState.active&&!force){document.getElementById("prospectiveStatus").textContent="PAUSED · click Start prospective tracker to begin collecting new signals.";return;}
- prospectiveBusy=true;
- const status=document.getElementById("prospectiveStatus");
- try{
-  status.textContent="Checking Coinbase 15-minute candles…";
-  const data=await prospectiveFetch();
-  if(data.length<40)throw new Error("Only "+data.length+" completed candles returned; at least 40 are needed.");
-  const latest=data[data.length-1],model=analyze(data,null);
-  const score=model?Math.round(model.score):null;
-  const lastProcessed=prospectiveState.lastSignalCandle||0;
-  let message="Latest completed candle "+new Date(latest.time+900000).toLocaleTimeString()+". Model score "+(score===null?"unavailable":score)+". ";
-  if(prospectiveState.open){
-   const p=prospectiveState.open;
-   if(p.waitingForEntry){
-    const entryCandle=data.find(c=>c.time===p.signalTime+900000);
-    if(entryCandle){p.entry=entryCandle.open;p.entryTime=entryCandle.time;delete p.waitingForEntry;prospectiveState.events.push({time:Date.now(),type:"ENTRY",price:p.entry});}
-   }
-   const exitCandle=data.find(c=>c.time===p.exitCandleTime);
-   if(exitCandle&&Number.isFinite(p.entry)&&p.entry>0){
-    const gross=(p.entry-exitCandle.close)/p.entry*10000,net=gross-4;
-    prospectiveState.trades.push({...p,exit:exitCandle.close,exitTime:exitCandle.time,grossBps:gross,netBps:net});
-    prospectiveState.events.push({time:Date.now(),type:"CLOSED",score:p.score,netBps:net});
-    prospectiveState.open=null;
-    message+="Five-candle position closed. ";
-   }else message+=p.waitingForEntry?"Waiting for next candle open to establish simulated entry. ":"Position open; waiting for its scheduled five-candle exit. ";
-  }
-  if(prospectiveState.active&&!prospectiveState.open&&latest.time>lastProcessed&&latest.time>=prospectiveState.startedAt){
-   if(model&&model.score<=-30){
-    prospectiveState.open={signalTime:latest.time,score,entry:null,entryTime:null,exitCandleTime:latest.time+5*900000,waitingForEntry:true};
-    prospectiveState.events.push({time:Date.now(),type:"SIGNAL",score});
-    message+="QUALIFYING DOWN signal recorded; waiting for next candle open.";
-   }else message+="No qualifying DOWN signal on this candle (requires score -30 or lower).";
-   prospectiveState.lastSignalCandle=latest.time;
-  }else if(prospectiveState.active&&!prospectiveState.open){
-   message+="Waiting for the next newly completed 15-minute candle after tracker start.";
-  }
-  prospectiveState.lastCheck=Date.now();
-  prospectiveState.lastModelScore=score;
-  prospectiveState.lastCandleTime=latest.time;
-  prospectiveState.lastMessage=message;
-  prospectiveSave();prospectiveStats();
-  document.getElementById("prospectiveDetail").textContent=message+" Fixed rules: DOWN score ≤ -30; next candle OPEN entry; CLOSE after five candles; 4 bps assumed friction.";
- }catch(e){
-  status.textContent="CHECK FAILED · "+e.message;
-  document.getElementById("prospectiveDetail").textContent="The tracker could not retrieve/process fresh market candles. "+e.message+" Check your internet connection and try Check now again.";
- }finally{prospectiveBusy=false;}
+ body.innerHTML=events.slice(0,15).map(e=>"<tr><td>"+new Date(e.time).toLocaleTimeString()+"</td><td>"+e.action+"</td><td>"+(e.score===null?"--":e.score)+"</td><td>"+(e.price===null?"No fresh quote":money(e.price))+"</td><td>"+(e.confidence===null?"--":e.confidence+"%")+"</td><td>"+(e.round?new Date(e.round).toLocaleTimeString():"--")+"</td></tr>").join("")||'<tr><td colspan="6">No dashboard signals recorded yet. Start the tracker and wait for the main model to signal BUY or CASH OUT.</td></tr>';
+ document.getElementById("prospectiveDetail").textContent="This tracker listens to the exact BUY UP, BUY DOWN, CASH OUT UP and CASH OUT DOWN decisions produced by the main dashboard. It does not run a separate model or impose a DOWN-only threshold. Paper trade results are shared with the Kalshi-style paper bot, which uses live Kalshi asks/bids and estimated fees. "+(prospectiveState.startedAt?"Started "+new Date(prospectiveState.startedAt).toLocaleString()+".":"");
 }
 function prospectiveStart(){
- if(prospectiveTimer)clearInterval(prospectiveTimer);
  prospectiveState.active=true;
  if(!prospectiveState.startedAt)prospectiveState.startedAt=Date.now();
+ prospectiveState.lastKey="";
  prospectiveSave();prospectiveStats();
- prospectiveCheck();
- prospectiveTimer=setInterval(()=>{if(!document.hidden)prospectiveCheck();},30000);
 }
 function prospectivePause(){
- prospectiveState.active=false;prospectiveSave();
- if(prospectiveTimer){clearInterval(prospectiveTimer);prospectiveTimer=null;}
- prospectiveStats();
- document.getElementById("prospectiveDetail").textContent="Paused. Existing paper-test history is preserved. Start again to resume collecting.";
+ prospectiveState.active=false;prospectiveSave();prospectiveStats();
+ document.getElementById("prospectiveDetail").textContent="Paused. Saved signal history and paper bot trades are preserved. Start again to follow new main-dashboard signals.";
 }
 function setupProspectiveTracker(){
- prospectiveStats();
  document.getElementById("prospectiveStart").addEventListener("click",prospectiveStart);
  document.getElementById("prospectivePause").addEventListener("click",prospectivePause);
- document.getElementById("prospectiveRefresh").addEventListener("click",()=>prospectiveCheck(true));
- if(prospectiveState.active)prospectiveStart();
+ document.getElementById("prospectiveRefresh").addEventListener("click",()=>{prospectiveStats();});
+ prospectiveStats();
 }
 function runBacktest(){
  let tested=0,correct=0;
