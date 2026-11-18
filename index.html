@@ -603,7 +603,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 
 <section class="card" id="autoPaperCard">
 <h2>MAIN AI BOT · KALSHI LIVE-MARKET PAPER TRADING</h2>
-<div class="small">Paper simulation only: no orders are sent. Entries use the selected Kalshi PRODUCTION market’s live UP/DOWN ask price; exits use the corresponding live bid. Contract quantity is calculated from the actual quoted price and a $10 maximum position budget, including an estimated Kalshi taker fee. If a fresh quote is unavailable, the bot will not open or cash out a position.</div>
+<div class="small">Paper simulation only: no orders are sent. The bot follows the main dashboard action: BUY opens a position, HOLD keeps it open (or joins an already-active HOLD signal when you start the bot), and CASH OUT closes it. Entries use the selected Kalshi PRODUCTION market’s live UP/DOWN ask; exits use the corresponding live bid. $10 maximum position budget including estimated taker fee. If a fresh quote is unavailable, it will not trade.</div>
 <div class="paper-controls" style="margin-top:12px">
 <button id="paperBotToggle" class="paper-off" type="button">Start paper bot</button>
 <button id="paperBotReset" type="button">Reset demo account</button>
@@ -1837,25 +1837,27 @@ function processPaperBot(action){
   paperBot.position.lastTwap=Number.isFinite(twapValue)?twapValue:paperBot.position.lastTwap;
   if(action==="CASH OUT "+paperBot.position.side){
    const bid=paperLiveQuote(paperBot.position.side,"bid",paperBot.position.marketTicker);
-   if(bid===null){$("paperBotMessage").textContent="Cash-out signal detected, but no fresh Kalshi DEMO bid is available. Position remains open; waiting for a current quote.";return;}
-   closePaperPosition(bid,"MODEL EXIT","Exited at the live Kalshi DEMO bid; estimated taker fee deducted. Paper simulation only.");
+   if(bid===null){$("paperBotMessage").textContent="CASH OUT signal detected, but a fresh Kalshi market bid is unavailable. Position remains open; waiting for a current quote.";return;}
+   closePaperPosition(bid,"MODEL EXIT","Exited at the live Kalshi market bid; estimated taker fee deducted. Paper simulation only.");
    savePaperBot();
   }else{savePaperBot();}
   return;
  }
- if(action!=="BUY UP"&&action!=="BUY DOWN")return;
- if(!kalshiMarketQuotes||Date.now()-kalshiMarketQuotes.fetchedAt>PAPER_QUOTE_MAX_AGE_MS||!kalshiMarketQuotes.ticker)return;
- const side=action==="BUY UP"?"UP":"DOWN";
- const ask=paperLiveQuote(side,"ask");
- if(ask===null){$("paperBotMessage").textContent="BUY signal detected, but no fresh Kalshi DEMO ask is available. No simulated trade opened.";return;}
+ const buySide=action==="BUY UP"?"UP":action==="BUY DOWN"?"DOWN":action==="HOLD UP"?"UP":action==="HOLD DOWN"?"DOWN":null;
+ if(!buySide)return;
+ if(!kalshiMarketQuotes||Date.now()-kalshiMarketQuotes.fetchedAt>PAPER_QUOTE_MAX_AGE_MS||!kalshiMarketQuotes.ticker){
+  $("paperBotMessage").textContent="Dashboard says "+action+", but the live Kalshi market quote is missing or stale. No paper position opened; waiting for a fresh quote.";return;
+ }
+ const ask=paperLiveQuote(buySide,"ask");
+ if(ask===null){$("paperBotMessage").textContent="Dashboard says "+action+", but no fresh Kalshi "+buySide+" ask is available. No paper position opened.";return;}
  const budget=Math.min(PAPER_TRADE_BUDGET,paperBot.bankroll);
  const contracts=paperAffordableContracts(ask,budget);
- if(contracts<1){$("paperBotMessage").textContent="Current "+side+" ask plus estimated fee exceeds the available $10 position budget or demo balance.";return;}
+ if(contracts<1){$("paperBotMessage").textContent="Current "+buySide+" ask plus estimated fee exceeds the available $10 position budget or paper balance.";return;}
  const entryFee=paperTakerFee(ask,contracts);
  const cost=contracts*ask+entryFee;
  paperBot.bankroll-=cost;
- paperBot.position={side,round:activeRound,contracts,entryPrice:ask,cost,entryFee,feeMultiplier:kalshiMarketQuotes.feeMultiplier||1,openedAt:nowServer(),marketTicker:kalshiMarketQuotes.ticker};
- $("paperBotMessage").textContent="Opened "+side+" paper position using live Kalshi PRODUCTION ask "+money(ask)+": "+contracts+" contracts; contract cost "+money(contracts*ask)+", estimated entry fee "+money(entryFee)+", total "+money(cost)+". No real order was placed.";
+ paperBot.position={side:buySide,round:activeRound,contracts,entryPrice:ask,cost,entryFee,feeMultiplier:kalshiMarketQuotes.feeMultiplier||1,openedAt:nowServer(),marketTicker:kalshiMarketQuotes.ticker,entrySignal:action};
+ $("paperBotMessage").textContent="Opened "+buySide+" paper position from dashboard "+action+" using live Kalshi market ask "+money(ask)+": "+contracts+" contracts; estimated total cost "+money(cost)+". Paper simulation only; no order was placed.";
  savePaperBot();
 }
 function renderPaperBot(){
@@ -1880,7 +1882,7 @@ function renderPaperBot(){
  el("paperBotJournal").innerHTML=closed.slice().reverse().map(t=>"<tr><td>"+new Date(t.time).toLocaleTimeString()+"</td><td>"+t.side+"</td><td>"+t.contracts+"</td><td>"+money(t.entry)+"</td><td>"+money(t.entryFee||0)+"</td><td>"+money(t.exit)+"</td><td>"+money(t.exitFee||0)+"</td><td class='"+(t.pnl>=0?"green":"red")+"'>"+(t.pnl>=0?"+":"")+money(t.pnl)+"</td><td>"+t.exitType+"</td></tr>").join("")||'<tr><td colspan="9">No demo trades yet.</td></tr>';
 }
 function setupPaperBot(){
- $("paperBotToggle").addEventListener("click",()=>{paperBot.enabled=!paperBot.enabled;savePaperBot();$("paperBotMessage").textContent=paperBot.enabled?"Demo bot running. It will simulate future BUY and CASH OUT signals only; it will not retroactively enter an existing signal.":"Demo bot paused. Any open simulated position remains open and can still settle when the round ends.";});
+ $("paperBotToggle").addEventListener("click",()=>{paperBot.enabled=!paperBot.enabled;savePaperBot();if(paperBot.enabled){$("paperBotMessage").textContent="Paper bot running and following the main dashboard signal.";processPaperBot($("signal").textContent.trim());}else{$("paperBotMessage").textContent="Paper bot paused. Any open simulated position remains open and can still settle when the round ends.";}renderPaperBot();});
  $("paperBotReset").addEventListener("click",()=>{if(!confirm("Reset the demo account to $100 and erase its simulated trade history?"))return;paperBot={enabled:false,bankroll:100,startingBankroll:100,position:null,trades:[]};savePaperBot();$("paperBotMessage").textContent="Demo account reset to $100. Bot is off.";});
  renderPaperBot();
 }
