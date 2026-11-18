@@ -374,6 +374,21 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
  <div class="small" id="kalshiPositions" style="margin-top:12px;white-space:pre-wrap">Positions: not loaded.</div>
  <div class="small" id="kalshiOrders" style="margin-top:8px;white-space:pre-wrap">Orders: not loaded.</div>
  <div class="small" id="kalshiFills" style="margin-top:8px;white-space:pre-wrap">Fills: not loaded.</div>
+ <div class="paper-stat" id="kalshiLifecycleCard" style="margin-top:12px">
+  <strong>TRADE LIFECYCLE MONITOR · READ ONLY</strong>
+  <div class="small" style="margin-top:6px">Automatically checks Kalshi DEMO positions, orders and fills. It does not place, edit or cancel orders. Refreshing the page keeps the saved event history.</div>
+  <div class="paper-grid" style="margin-top:10px">
+   <div class="paper-stat"><span class="small">Open positions</span><strong id="kalshiLifePositionCount">--</strong></div>
+   <div class="paper-stat"><span class="small">Recent orders</span><strong id="kalshiLifeOrderCount">--</strong></div>
+   <div class="paper-stat"><span class="small">Recent fills</span><strong id="kalshiLifeFillCount">--</strong></div>
+   <div class="paper-stat"><span class="small">DEMO equity drawdown</span><strong id="kalshiLifeDrawdown">--</strong></div>
+  </div>
+  <div class="small" id="kalshiLifePosition" style="margin-top:9px;white-space:pre-wrap">Waiting for a DEMO connection.</div>
+  <div class="small" id="kalshiLifeLatest" style="margin-top:8px;white-space:pre-wrap">No lifecycle snapshot yet.</div>
+  <div class="small" style="margin-top:8px"><strong>RECENT LIFECYCLE EVENTS</strong></div>
+  <div class="small" id="kalshiLifeHistory" style="margin-top:6px;white-space:pre-wrap;max-height:180px;overflow-y:auto;padding:8px 10px;border:1px solid #2b414a;border-radius:8px">No events recorded yet.</div>
+  <div class="small" style="margin-top:7px">P&amp;L note: this monitor does not claim realized trade profit/loss. It shows Kalshi's account equity drawdown and raw order/fill activity; matching entries to exits and fees is not yet validated.</div>
+ </div>
  <div class="small yellow" style="margin-top:12px">Safety limits: DEMO host is hard-coded in the Worker; exactly 1 contract per order; limit price must be $0.01–$0.99; each order requires a confirmation prompt. The existing paper bot does not send Kalshi orders automatically yet.</div>
 </section>
 
@@ -1788,6 +1803,69 @@ async function updateKalshiAutoPreview(){
   kalshiAutoPreviewInFlight=false;
  }
 }
+let kalshiLifecycleTimer=null;
+let kalshiLifecycleInFlight=false;
+let kalshiLifecycleEvents=JSON.parse(localStorage.getItem("kalshiTradeLifecycleV1")||"[]");
+let kalshiLifecycleSeen=new Set(kalshiLifecycleEvents.map(e=>e.key));
+function kalshiSaveLifecycle(){
+ kalshiLifecycleEvents=kalshiLifecycleEvents.slice(0,100);
+ localStorage.setItem("kalshiTradeLifecycleV1",JSON.stringify(kalshiLifecycleEvents));
+}
+function kalshiLifeValue(obj,keys){
+ for(const key of keys){const value=obj?.[key];if(value!==undefined&&value!==null&&value!=="")return value;}
+ return "--";
+}
+function kalshiLifeAddEvent(key,message,time){
+ if(!key||kalshiLifecycleSeen.has(key))return;
+ kalshiLifecycleSeen.add(key);
+ kalshiLifecycleEvents.unshift({key,message,time:time||new Date().toISOString()});
+ kalshiSaveLifecycle();
+}
+function kalshiRenderLifecycleHistory(){
+ const el=document.getElementById("kalshiLifeHistory");
+ if(!el)return;
+ el.textContent=kalshiLifecycleEvents.slice(0,25).map(e=>new Date(e.time).toLocaleString()+" · "+e.message).join("\n")||"No events recorded yet.";
+}
+async function kalshiUpdateLifecycle(){
+ if(kalshiLifecycleInFlight||document.getElementById("kalshiConnectionState")?.textContent!=="DEMO CONNECTED")return;
+ kalshiLifecycleInFlight=true;
+ try{
+  const r=await kalshiApi("lifecycle");
+  if(r.environment!=="DEMO"||r.readOnly!==true||r.orderSubmission!==false)throw new Error("Server did not confirm a read-only DEMO snapshot.");
+  const positions=r.positions||[],orders=r.orders||[],fills=r.fills||[],risk=r.risk||{};
+  document.getElementById("kalshiLifePositionCount").textContent=String(positions.length);
+  document.getElementById("kalshiLifeOrderCount").textContent=String(orders.length);
+  document.getElementById("kalshiLifeFillCount").textContent=String(fills.length);
+  document.getElementById("kalshiLifeDrawdown").textContent=kalshiMoney(risk.balanceDrawdown);
+  const posLines=positions.map(p=>{
+   const qty=kalshiLifeValue(p,["position_fp","position","quantity"]);
+   const ticker=kalshiLifeValue(p,["ticker"]);
+   const exposure=kalshiLifeValue(p,["market_exposure_dollars","market_exposure"]);
+   return ticker+" · position "+qty+" · exposure "+(exposure==="--"?"not provided":exposure);
+  });
+  document.getElementById("kalshiLifePosition").textContent=positions.length?"OPEN DEMO POSITION(S)\n"+posLines.join("\n"):"No open DEMO positions reported by Kalshi.";
+  const latestOrder=orders[0],latestFill=fills[0];
+  const orderLine=latestOrder?"Latest order: "+kalshiLifeValue(latestOrder,["ticker"])+" · "+kalshiLifeValue(latestOrder,["action","side"])+" · "+kalshiLifeValue(latestOrder,["status"])+" · ID "+kalshiLifeValue(latestOrder,["order_id"]):"No recent orders returned.";
+  const fillLine=latestFill?"Latest fill: "+kalshiLifeValue(latestFill,["ticker"])+" · "+kalshiLifeValue(latestFill,["side","action"])+" · "+kalshiLifeValue(latestFill,["count_fp","count","fill_count"])+" contracts · "+kalshiLifeValue(latestFill,["created_time","ts","timestamp"]):"No fills returned.";
+  document.getElementById("kalshiLifeLatest").textContent=orderLine+"\n"+fillLine+"\nChecked: "+new Date(r.checkedAt||Date.now()).toLocaleTimeString()+" · read-only";
+  for(const o of orders){
+   const id=kalshiLifeValue(o,["order_id","client_order_id"]);
+   const status=kalshiLifeValue(o,["status"]);
+   kalshiLifeAddEvent("order|"+id+"|"+status,"ORDER "+status+" · "+kalshiLifeValue(o,["ticker"])+" · "+kalshiLifeValue(o,["side","action"])+" · "+id,o.updated_time||o.created_time);
+  }
+  for(const f of fills){
+   const id=kalshiLifeValue(f,["fill_id","trade_id","id"]);
+   kalshiLifeAddEvent("fill|"+id,"FILL · "+kalshiLifeValue(f,["ticker"])+" · "+kalshiLifeValue(f,["side","action"])+" · "+kalshiLifeValue(f,["count_fp","count","fill_count"])+" contracts · "+id,f.created_time||f.ts||f.timestamp);
+  }
+  kalshiRenderLifecycleHistory();
+ }catch(e){
+  const el=document.getElementById("kalshiLifeLatest");
+  if(el)el.textContent="Lifecycle check unavailable: "+e.message;
+ }finally{kalshiLifecycleInFlight=false;}
+}
+function setupKalshiLifecycle(){
+ kalshiRenderLifecycleHistory();
+}
 let kalshiPreflightInFlight=false;
 async function kalshiRunPreflight(){
  const el=document.getElementById("kalshiPreflightStatus");
@@ -1906,12 +1984,15 @@ function setupKalshiDemo(){
 }
 
 setupKalshiDemo();
+setupKalshiLifecycle();
 setupKalshiAutoPreview();
 // Automatically refresh active BTC markets every 30 seconds while connected.
 setInterval(()=>{if(document.getElementById("kalshiConnectionState")?.textContent==="DEMO CONNECTED"&&!document.hidden)kalshiLoadMarkets();},30000);
 // Automatically rerun the read-only server preflight every 60 seconds. Never submits orders.
 setInterval(()=>{if(document.getElementById("kalshiConnectionState")?.textContent==="DEMO CONNECTED"&&!document.hidden)kalshiRunPreflight();},60000);
 setInterval(()=>{if(document.getElementById("kalshiConnectionState")?.textContent==="DEMO CONNECTED")kalshiLoadRiskStatus();},30000);
+// Read-only lifecycle polling: recent DEMO orders, fills and positions; never sends orders.
+setInterval(()=>{if(document.getElementById("kalshiConnectionState")?.textContent==="DEMO CONNECTED"&&!document.hidden)kalshiUpdateLifecycle();},10000);
 setInterval(updateKalshiAutoPreview,5000);
 setInterval(()=>{if(document.getElementById("kalshiMarket").value)kalshiLoadLiveMarket();},5000);
 </script>
