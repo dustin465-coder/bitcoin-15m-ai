@@ -367,6 +367,93 @@ export async function handleKalshiRequest(request, env, url) {
       }, 200, allowedOrigin);
     }
 
+    if (url.pathname === "/kalshi/trade-ledger" && request.method === "GET") {
+      // Full-history read-only fill ledger. FIFO matching; refuses to claim P&L if history/fields are incomplete.
+      let cursor = "";
+      const fills = [];
+      const seen = new Set();
+      let complete = false;
+      for (let page = 0; page < 20; page++) {
+        const params = new URLSearchParams({limit:"200"});
+        if (cursor) params.set("cursor", cursor);
+        const data = await signedKalshiRequest(env, "GET", "/portfolio/fills?" + params.toString());
+        if (!Array.isArray(data.fills)) throw new Error("Kalshi fills response was missing its fills list.");
+        fills.push(...data.fills);
+        const next = String(data.cursor || "");
+        if (!next) { complete = true; break; }
+        if (seen.has(next)) throw new Error("Kalshi fill pagination repeated a cursor; ledger incomplete.");
+        seen.add(next);
+        cursor = next;
+      }
+      const lots = new Map();
+      const closed = [];
+      const unmatchedSells = [];
+      let feesTotal = 0;
+      let feesValid = true;
+      let fieldsValid = true;
+      const ordered = fills.slice().sort((a,b) => Date.parse(a.created_time||0)-Date.parse(b.created_time||0));
+      for (const f of ordered) {
+        const ticker = String(f.ticker || f.market_ticker || "");
+        const action = String(f.action || "").toLowerCase();
+        const side = String(f.side || "").toLowerCase();
+        const count = Number(f.count_fp ?? f.count ?? 0);
+        const priceRaw = side === "yes" ? (f.yes_price_dollars ?? f.yes_price) : side === "no" ? (f.no_price_dollars ?? f.no_price) : null;
+        let price = Number(priceRaw);
+        if (priceRaw !== null && priceRaw !== undefined && priceRaw !== "" && price > 1) price /= 100;
+        const fee = Number(f.fee_cost ?? f.fee_cost_dollars ?? 0);
+        if (!ticker || !["buy","sell"].includes(action) || !["yes","no"].includes(side) || !Number.isFinite(count) || count <= 0 || !Number.isFinite(price) || price <= 0 || price >= 1) { fieldsValid = false; continue; }
+        if (!Number.isFinite(fee) || fee < 0) feesValid = false;
+        else feesTotal += fee;
+        const key = ticker + "|" + side;
+        if (!lots.has(key)) lots.set(key, []);
+        const queue = lots.get(key);
+        const fillId = String(f.fill_id || f.trade_id || f.order_id || "");
+        const time = f.created_time || null;
+        if (action === "buy") {
+          queue.push({ticker,side,count,remaining:count,price,feePerContract:(Number.isFinite(fee)&&fee>=0?fee:0)/count,time,fillId});
+          continue;
+        }
+        let remaining = count;
+        while (remaining > 0 && queue.length) {
+          const lot = queue[0];
+          const matched = Math.min(remaining,lot.remaining);
+          const entryFee = lot.feePerContract * matched;
+          const exitFee = (Number.isFinite(fee)&&fee>=0?fee:0) * (matched/count);
+          const gross = (price-lot.price)*matched;
+          const net = gross-entryFee-exitFee;
+          closed.push({
+            ticker, direction:side.toUpperCase(), contracts:Number(matched.toFixed(4)),
+            entryPrice:Number(lot.price.toFixed(4)), exitPrice:Number(price.toFixed(4)),
+            entryTime:lot.time, exitTime:time, entryFillId:lot.fillId, exitFillId:fillId,
+            grossPnl:Number(gross.toFixed(4)), fees:Number((entryFee+exitFee).toFixed(4)), netPnl:Number(net.toFixed(4))
+          });
+          lot.remaining = Number((lot.remaining-matched).toFixed(8));
+          remaining = Number((remaining-matched).toFixed(8));
+          if (lot.remaining <= 0.00000001) queue.shift();
+        }
+        if (remaining > 0.00000001) unmatchedSells.push({ticker,side,count:Number(remaining.toFixed(4)),fillId,time});
+      }
+      const openLots = [];
+      for (const queue of lots.values()) for (const lot of queue) if (lot.remaining > 0.00000001) openLots.push({
+        ticker:lot.ticker,direction:lot.side.toUpperCase(),contracts:Number(lot.remaining.toFixed(4)),
+        entryPrice:Number(lot.price.toFixed(4)),entryTime:lot.time,entryFillId:lot.fillId
+      });
+      const realizedGross = closed.reduce((n,t)=>n+t.grossPnl,0);
+      const realizedFees = closed.reduce((n,t)=>n+t.fees,0);
+      const realizedNet = closed.reduce((n,t)=>n+t.netPnl,0);
+      return json({
+        environment:"DEMO",readOnly:true,orderSubmission:false,checkedAt:new Date().toISOString(),
+        fillCount:fills.length,historyComplete:complete,fieldsValid,feesValid,
+        ledgerValid:complete&&fieldsValid&&feesValid&&unmatchedSells.length===0,
+        totalFees:Number(feesTotal.toFixed(4)),
+        realizedGrossPnl:Number(realizedGross.toFixed(4)),
+        realizedFees:Number(realizedFees.toFixed(4)),
+        realizedNetPnl:Number(realizedNet.toFixed(4)),
+        closedTrades:closed.slice(-100).reverse(),openLots,unmatchedSells,
+        note:"FIFO ledger from Kalshi DEMO fills. Net P&L includes recorded entry and exit fees for matched contracts only. It is authoritative only when historyComplete, fieldsValid, feesValid and unmatchedSells are all clear. Open lots are not marked to market. No orders were submitted."
+      },200,allowedOrigin);
+    }
+
     if (url.pathname === "/kalshi/risk-status" && request.method === "GET") {
       const risk = await getRiskSnapshot(env);
       return json(risk, 200, allowedOrigin);
