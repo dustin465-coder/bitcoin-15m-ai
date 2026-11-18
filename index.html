@@ -623,8 +623,8 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 </div>
 <div class="small" id="paperBotMessage">Bot is off. Start it to simulate qualified BUY signals using live Kalshi DEMO contract asks and bids. Maximum entry budget is $10 including estimated taker fees; one position at a time.</div>
 <div style="overflow-x:auto;margin-top:12px">
-<table><thead><tr><th>Time</th><th>Side</th><th>Contracts</th><th>Entry</th><th>Exit</th><th>Net P&amp;L</th><th>Exit type</th></tr></thead>
-<tbody id="paperBotJournal"><tr><td colspan="7">No demo trades yet.</td></tr></tbody></table>
+<table><thead><tr><th>Time</th><th>Side</th><th>Contracts</th><th>Entry ask</th><th>Entry fee</th><th>Exit bid</th><th>Exit fee</th><th>Net P&amp;L</th><th>Exit type</th></tr></thead>
+<tbody id="paperBotJournal"><tr><td colspan="9">No demo trades yet.</td></tr></tbody></table>
 </div>
 </section>
 
@@ -1834,9 +1834,9 @@ function paperTakerFee(price,contracts,multiplier=1){
  const raw=multiplier*0.07*contracts*price*(1-price);
  return Math.ceil(raw*100-1e-9)/100;
 }
-function paperLiveQuote(side,kind){
+function paperLiveQuote(side,kind,expectedTicker){
  const q=marketQuotes;
- if(!q||Date.now()-q.fetchedAt>PAPER_QUOTE_MAX_AGE_MS)return null;
+ if(!q||Date.now()-q.fetchedAt>PAPER_QUOTE_MAX_AGE_MS||(expectedTicker&&q.ticker!==expectedTicker))return null;
  const price=side==="UP"?(kind==="ask"?q.yesAsk:q.yesBid):(kind==="ask"?q.noAsk:q.noBid);
  return Number.isFinite(price)&&price>0&&price<1?price:null;
 }
@@ -1867,7 +1867,7 @@ function processPaperBot(action){
  if(paperBot.position){
   paperBot.position.lastTwap=Number.isFinite(twapValue)?twapValue:paperBot.position.lastTwap;
   if(action==="CASH OUT "+paperBot.position.side){
-   const bid=paperLiveQuote(paperBot.position.side,"bid");
+   const bid=paperLiveQuote(paperBot.position.side,"bid",paperBot.position.marketTicker);
    if(bid===null){$("paperBotMessage").textContent="Cash-out signal detected, but no fresh Kalshi DEMO bid is available. Position remains open; waiting for a current quote.";return;}
    closePaperPosition(bid,"MODEL EXIT","Exited at the live Kalshi DEMO bid; estimated taker fee deducted. Paper simulation only.");
    savePaperBot();
@@ -1905,10 +1905,10 @@ function renderPaperBot(){
  el("paperPosition").textContent=p?p.side:"None";
  el("paperContracts").textContent=p?p.contracts:"--";
  el("paperEntryCost").textContent=p?money(p.cost):"--";
- const mark=p?paperLiveQuote(p.side,"bid"):null;
+ const mark=p?paperLiveQuote(p.side,"bid",p.marketTicker):null;
  const unrealized=p&&Number.isFinite(mark)?p.contracts*mark-paperTakerFee(mark,p.contracts,p.feeMultiplier??1)-p.cost:null;
  el("paperUnrealized").textContent=unrealized===null?"--":(unrealized>=0?"+":"")+money(unrealized);
- el("paperBotJournal").innerHTML=closed.slice().reverse().map(t=>"<tr><td>"+new Date(t.time).toLocaleTimeString()+"</td><td>"+t.side+"</td><td>"+t.contracts+"</td><td>"+money(t.entry)+"</td><td>"+money(t.exit)+"</td><td class='"+(t.pnl>=0?"green":"red")+"'>"+(t.pnl>=0?"+":"")+money(t.pnl)+"</td><td>"+t.exitType+"</td></tr>").join("")||'<tr><td colspan="7">No demo trades yet.</td></tr>';
+ el("paperBotJournal").innerHTML=closed.slice().reverse().map(t=>"<tr><td>"+new Date(t.time).toLocaleTimeString()+"</td><td>"+t.side+"</td><td>"+t.contracts+"</td><td>"+money(t.entry)+"</td><td>"+money(t.entryFee||0)+"</td><td>"+money(t.exit)+"</td><td>"+money(t.exitFee||0)+"</td><td class='"+(t.pnl>=0?"green":"red")+"'>"+(t.pnl>=0?"+":"")+money(t.pnl)+"</td><td>"+t.exitType+"</td></tr>").join("")||'<tr><td colspan="9">No demo trades yet.</td></tr>';
 }
 function setupPaperBot(){
  $("paperBotToggle").addEventListener("click",()=>{paperBot.enabled=!paperBot.enabled;savePaperBot();$("paperBotMessage").textContent=paperBot.enabled?"Demo bot running. It will simulate future BUY and CASH OUT signals only; it will not retroactively enter an existing signal.":"Demo bot paused. Any open simulated position remains open and can still settle when the round ends.";});
@@ -2064,6 +2064,7 @@ function kalshiQuoteDollars(m,dollarField,centsField){
  return null;
 }
 async function kalshiLoadLiveMarket(){
+ marketQuotes=null;
  const ticker=document.getElementById("kalshiMarket").value;
  const up=document.getElementById("kalshiLiveUp"), down=document.getElementById("kalshiLiveDown");
  const upBid=document.getElementById("kalshiLiveUpBid"), downBid=document.getElementById("kalshiLiveDownBid");
