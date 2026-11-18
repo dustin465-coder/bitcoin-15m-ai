@@ -1655,11 +1655,15 @@ async function prospectiveCheck(){
   const latest=data[data.length-1];
   if(prospectiveState.open){
    const p=prospectiveState.open;
+   if(p.waitingForEntry){
+    const entryCandle=data.find(c=>c.time===p.signalTime+900000);
+    if(entryCandle){p.entry=entryCandle.open;p.entryTime=entryCandle.time;delete p.waitingForEntry;}
+   }
    const exitCandle=data.find(c=>c.time===p.exitCandleTime);
-   if(exitCandle){
+   if(exitCandle&&Number.isFinite(p.entry)&&p.entry>0){
     const gross=(p.entry-exitCandle.close)/p.entry*10000;
     const net=gross-4;
-    prospectiveState.trades.push({...p,exit:exitCandle.close,exitTime:exitCandle.time, grossBps:gross,netBps:net});
+    prospectiveState.trades.push({...p,exit:exitCandle.close,exitTime:exitCandle.time,grossBps:gross,netBps:net});
     prospectiveState.events.push({time:Date.now(),type:"CLOSED",score:p.score,netBps:net});
     prospectiveState.open=null;
    }
