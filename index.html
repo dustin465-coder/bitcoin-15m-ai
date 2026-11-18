@@ -1621,8 +1621,8 @@ function runStrategyOptimizer(){
 }
 const prospectiveKey="btcProspectiveDownV1";
 let prospectiveState=JSON.parse(localStorage.getItem(prospectiveKey)||"null")||{active:false,startedAt:null,lastSignalCandle:0,open:null,trades:[],events:[],lastCheck:null};
-let prospectiveTimer=null;
-function prospectiveSave(){localStorage.setItem(prospectiveKey,JSON.stringify(prospectiveState));}
+let prospectiveTimer=null,prospectiveBusy=false;
+function prospectiveSave(){try{localStorage.setItem(prospectiveKey,JSON.stringify(prospectiveState));}catch(e){}}
 function prospectiveStats(){
  const rows=prospectiveState.trades||[];
  const wins=rows.filter(t=>t.netBps>0).length;
@@ -1634,79 +1634,85 @@ function prospectiveStats(){
  document.getElementById("prospectiveDD").textContent=rows.length?dd.toFixed(2)+" bps":"--";
  document.getElementById("prospectiveOpen").textContent=prospectiveState.open?"1":"0";
  const body=document.getElementById("prospectiveRows");
- body.innerHTML=rows.slice(-12).reverse().map(t=>"<tr><td>"+new Date(t.signalTime).toLocaleString()+"</td><td>"+t.score+"</td><td>"+t.entry.toFixed(2)+"</td><td>"+t.exit.toFixed(2)+"</td><td>"+(t.netBps>=0?"+":"")+t.netBps.toFixed(2)+"</td><td>"+(t.netBps>0?"WIN":"LOSS")+"</td></tr>").join("")||'<tr><td colspan="6">No prospective trades recorded.</td></tr>';
+ body.innerHTML=rows.slice(-12).reverse().map(t=>"<tr><td>"+new Date(t.signalTime).toLocaleString()+"</td><td>"+t.score+"</td><td>"+Number(t.entry).toFixed(2)+"</td><td>"+Number(t.exit).toFixed(2)+"</td><td>"+(t.netBps>=0?"+":"")+t.netBps.toFixed(2)+"</td><td>"+(t.netBps>0?"WIN":"LOSS")+"</td></tr>").join("")||'<tr><td colspan="6">No prospective trades recorded.</td></tr>';
  document.getElementById("prospectiveStatus").textContent=(prospectiveState.active?"RUNNING":"PAUSED")+" · last checked "+(prospectiveState.lastCheck?new Date(prospectiveState.lastCheck).toLocaleTimeString():"not yet");
- document.getElementById("prospectiveDetail").textContent="Started "+(prospectiveState.startedAt?new Date(prospectiveState.startedAt).toLocaleString():"not yet")+". Fixed rule: DOWN score ≤ -30; next-candle OPEN entry; CLOSE after five 15-minute candles; 4 bps assumed friction. "+(prospectiveState.open?"One simulated position is waiting to exit.":"No simulated position currently open.");
 }
 async function prospectiveFetch(){
  const end=Date.now(),start=end-3*86400000;
  const url="https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=900&start="+encodeURIComponent(new Date(start).toISOString())+"&end="+encodeURIComponent(new Date(end).toISOString());
  const response=await fetch(url,{cache:"no-store"});
- if(!response.ok)throw new Error("Coinbase data request failed (HTTP "+response.status+").");
+ if(!response.ok)throw new Error("Coinbase candle feed returned HTTP "+response.status);
  const rows=await response.json();
- return rows.map(k=>({time:Number(k[0])*1000,low:Number(k[1]),high:Number(k[2]),open:Number(k[3]),close:Number(k[4]),volume:Number(k[5])})).filter(c=>c.time+900000<=end&&[c.time,c.low,c.high,c.open,c.close,c.volume].every(Number.isFinite)).sort((a,b)=>a.time-b.time);
+ return rows.map(k=>({time:Number(k[0])*1000,low:Number(k[1]),high:Number(k[2]),open:Number(k[3]),close:Number(k[4]),volume:Number(k[5])})).filter(c=>c.time+900000<=end&&[c.time,c.low,c.high,c.open,c.close,c.volume].every(Number.isFinite)).sort((x,y)=>x.time-y.time);
 }
-async function prospectiveCheck(){
- if(!prospectiveState.active)return;
+async function prospectiveCheck(force=false){
+ if(prospectiveBusy)return;
+ if(!prospectiveState.active&&!force){document.getElementById("prospectiveStatus").textContent="PAUSED · click Start prospective tracker to begin collecting new signals.";return;}
+ prospectiveBusy=true;
  const status=document.getElementById("prospectiveStatus");
  try{
+  status.textContent="Checking Coinbase 15-minute candles…";
   const data=await prospectiveFetch();
-  if(data.length<40)throw new Error("Not enough completed candles returned.");
-  const latest=data[data.length-1];
+  if(data.length<40)throw new Error("Only "+data.length+" completed candles returned; at least 40 are needed.");
+  const latest=data[data.length-1],model=analyze(data,null);
+  const score=model?Math.round(model.score):null;
+  const lastProcessed=prospectiveState.lastSignalCandle||0;
+  let message="Latest completed candle "+new Date(latest.time+900000).toLocaleTimeString()+". Model score "+(score===null?"unavailable":score)+". ";
   if(prospectiveState.open){
    const p=prospectiveState.open;
    if(p.waitingForEntry){
     const entryCandle=data.find(c=>c.time===p.signalTime+900000);
-    if(entryCandle){p.entry=entryCandle.open;p.entryTime=entryCandle.time;delete p.waitingForEntry;}
+    if(entryCandle){p.entry=entryCandle.open;p.entryTime=entryCandle.time;delete p.waitingForEntry;prospectiveState.events.push({time:Date.now(),type:"ENTRY",price:p.entry});}
    }
    const exitCandle=data.find(c=>c.time===p.exitCandleTime);
    if(exitCandle&&Number.isFinite(p.entry)&&p.entry>0){
-    const gross=(p.entry-exitCandle.close)/p.entry*10000;
-    const net=gross-4;
+    const gross=(p.entry-exitCandle.close)/p.entry*10000,net=gross-4;
     prospectiveState.trades.push({...p,exit:exitCandle.close,exitTime:exitCandle.time,grossBps:gross,netBps:net});
     prospectiveState.events.push({time:Date.now(),type:"CLOSED",score:p.score,netBps:net});
     prospectiveState.open=null;
-   }
+    message+="Five-candle position closed. ";
+   }else message+=p.waitingForEntry?"Waiting for next candle open to establish simulated entry. ":"Position open; waiting for its scheduled five-candle exit. ";
   }
-  if(!prospectiveState.open&&latest.time>prospectiveState.lastSignalCandle&&latest.time>=prospectiveState.startedAt){
-   const index=data.findIndex(c=>c.time===latest.time);
-   const model=analyze(data.slice(0,index+1),null);
-   prospectiveState.lastSignalCandle=latest.time;
+  if(prospectiveState.active&&!prospectiveState.open&&latest.time>lastProcessed&&latest.time>=prospectiveState.startedAt){
    if(model&&model.score<=-30){
-    const entryCandle=data[index+1];
-    const exitCandleTime=latest.time+5*900000;
-    prospectiveState.open={signalTime:latest.time,score:Math.round(model.score),entry:entryCandle?entryCandle.open:null,entryTime:entryCandle?entryCandle.time:null,exitCandleTime};
-    if(!entryCandle)prospectiveState.open.waitingForEntry=true;
-    prospectiveState.events.push({time:Date.now(),type:"SIGNAL",score:Math.round(model.score)});
-   }
-  }
-  if(prospectiveState.open&&prospectiveState.open.waitingForEntry){
-   const p=prospectiveState.open,entryCandle=data.find(c=>c.time===p.signalTime+900000);
-   if(entryCandle){p.entry=entryCandle.open;p.entryTime=entryCandle.time;delete p.waitingForEntry;}
+    prospectiveState.open={signalTime:latest.time,score,entry:null,entryTime:null,exitCandleTime:latest.time+5*900000,waitingForEntry:true};
+    prospectiveState.events.push({time:Date.now(),type:"SIGNAL",score});
+    message+="QUALIFYING DOWN signal recorded; waiting for next candle open.";
+   }else message+="No qualifying DOWN signal on this candle (requires score -30 or lower).";
+   prospectiveState.lastSignalCandle=latest.time;
+  }else if(prospectiveState.active&&!prospectiveState.open){
+   message+="Waiting for the next newly completed 15-minute candle after tracker start.";
   }
   prospectiveState.lastCheck=Date.now();
-  prospectiveSave();
-  prospectiveStats();
- }catch(e){status.textContent="Tracker check failed: "+e.message;}
+  prospectiveState.lastModelScore=score;
+  prospectiveState.lastCandleTime=latest.time;
+  prospectiveState.lastMessage=message;
+  prospectiveSave();prospectiveStats();
+  document.getElementById("prospectiveDetail").textContent=message+" Fixed rules: DOWN score ≤ -30; next candle OPEN entry; CLOSE after five candles; 4 bps assumed friction.";
+ }catch(e){
+  status.textContent="CHECK FAILED · "+e.message;
+  document.getElementById("prospectiveDetail").textContent="The tracker could not retrieve/process fresh market candles. "+e.message+" Check your internet connection and try Check now again.";
+ }finally{prospectiveBusy=false;}
 }
 function prospectiveStart(){
  if(prospectiveTimer)clearInterval(prospectiveTimer);
  prospectiveState.active=true;
  if(!prospectiveState.startedAt)prospectiveState.startedAt=Date.now();
- prospectiveSave();prospectiveStats();prospectiveCheck();
- prospectiveTimer=setInterval(()=>{if(!document.hidden)prospectiveCheck();},60000);
+ prospectiveSave();prospectiveStats();
+ prospectiveCheck();
+ prospectiveTimer=setInterval(()=>{if(!document.hidden)prospectiveCheck();},30000);
 }
 function prospectivePause(){
- prospectiveState.active=false;
- prospectiveSave();
+ prospectiveState.active=false;prospectiveSave();
  if(prospectiveTimer){clearInterval(prospectiveTimer);prospectiveTimer=null;}
  prospectiveStats();
+ document.getElementById("prospectiveDetail").textContent="Paused. Existing paper-test history is preserved. Start again to resume collecting.";
 }
 function setupProspectiveTracker(){
  prospectiveStats();
  document.getElementById("prospectiveStart").addEventListener("click",prospectiveStart);
  document.getElementById("prospectivePause").addEventListener("click",prospectivePause);
- document.getElementById("prospectiveRefresh").addEventListener("click",prospectiveCheck);
+ document.getElementById("prospectiveRefresh").addEventListener("click",()=>prospectiveCheck(true));
  if(prospectiveState.active)prospectiveStart();
 }
 function runBacktest(){
