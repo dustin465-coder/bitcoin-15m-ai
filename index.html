@@ -602,7 +602,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 </section>
 
 <section class="card" id="autoPaperCard">
-<h2>AUTOMATIC DEMO BOT · KALSHI-STYLE PAPER TRADING</h2>
+<h2>MAIN AI BOT · KALSHI LIVE-MARKET PAPER TRADING</h2>
 <div class="small">Paper simulation only: no orders are sent. Entries use the selected Kalshi PRODUCTION market’s live UP/DOWN ask price; exits use the corresponding live bid. Contract quantity is calculated from the actual quoted price and a $10 maximum position budget, including an estimated Kalshi taker fee. If a fresh quote is unavailable, the bot will not open or cash out a position.</div>
 <div class="paper-controls" style="margin-top:12px">
 <button id="paperBotToggle" class="paper-off" type="button">Start paper bot</button>
@@ -1781,7 +1781,7 @@ async function refreshAutoTracker(){
  }
 }
 
-const PAPER_BOT_KEY="btcKalshiDemoBot_v1";
+const PAPER_BOT_KEY="btcKalshiPaperBot_v2";
 function loadPaperBot(){
  try{const saved=JSON.parse(localStorage.getItem(PAPER_BOT_KEY)||"null");return saved&&typeof saved==="object"?{enabled:!!saved.enabled,bankroll:Number.isFinite(saved.bankroll)?saved.bankroll:100,startingBankroll:100,position:saved.position||null,trades:Array.isArray(saved.trades)?saved.trades:[]}: {enabled:false,bankroll:100,startingBankroll:100,position:null,trades:[]};}
  catch(e){return {enabled:false,bankroll:100,startingBankroll:100,position:null,trades:[]};}
@@ -1813,7 +1813,7 @@ function closePaperPosition(exitPrice,exitType,detail){
  const proceeds=p.contracts*price-exitFee;
  const pnl=proceeds-p.cost;paperBot.bankroll+=proceeds;
  paperBot.trades.push({time:nowServer(),side:p.side,contracts:p.contracts,entry:p.entryPrice,exit:price,entryFee:p.entryFee||0,exitFee,pnl,exitType,round:p.round,detail:detail||""});
- paperBot.trades=paperBot.trades.slice(-50);paperBot.position=null;
+ paperBot.trades=paperBot.trades.slice(-1000);paperBot.position=null;
 }
 async function kalshiResolvePaperPosition(){
  const p=paperBot.position;
