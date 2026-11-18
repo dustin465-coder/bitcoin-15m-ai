@@ -731,9 +731,21 @@ function saveOpening(round,value,timestamp){
 function updateRound(){
  const current=roundStart(nowServer());
  if(current!==activeRound){
+  const previousRound=activeRound;
   activeRound=current;
+  // A new 15-minute market always starts with a clean signal lifecycle.
+  // Keep the prior round's history out of the new round, even if this tab
+  // remained open across the boundary.
+  try{localStorage.removeItem("btcSignalState21");}catch(e){}
+  liveProbability=null;
   twapSamples=[];
   loadOpening(activeRound);
+  const signalEl=document.getElementById("signal");
+  const reasonEl=document.getElementById("signalReason");
+  const stateEl=document.getElementById("decisionState");
+  if(signalEl)signalEl.textContent="NO TRADE";
+  if(reasonEl)reasonEl.textContent="New 15-minute round started. Waiting for fresh entry conditions.";
+  if(stateEl)stateEl.textContent="Stand aside";
  }
 }
 
