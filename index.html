@@ -332,6 +332,32 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 </div>
 </section>
 
+<section class="card" id="prospectiveDownCard">
+<h2>PROSPECTIVE DOWN-ONLY VALIDATION · LOCKED RULES</h2>
+<div class="small">Forward-only paper test. Fixed rules: DOWN score ≤ -30, enter at the next completed 15-minute candle OPEN, exit at the CLOSE after five 15-minute candles. One position at a time. No historical backfill and no Kalshi orders.</div>
+<div class="paper-controls" style="margin-top:9px">
+ <button id="prospectiveStart" type="button">Start prospective tracker</button>
+ <button id="prospectivePause" type="button" class="paper-off">Pause tracker</button>
+ <button id="prospectiveRefresh" type="button" class="paper-off">Check now</button>
+ <span class="small" id="prospectiveStatus">Not started. Start to establish a fresh baseline.</span>
+</div>
+<div class="paper-grid" style="margin-top:10px">
+ <div class="paper-stat"><span class="small">Completed test trades</span><strong id="prospectiveTrades">0</strong></div>
+ <div class="paper-stat"><span class="small">Win rate</span><strong id="prospectiveWin">--</strong></div>
+ <div class="paper-stat"><span class="small">Net BTC movement</span><strong id="prospectiveNet">--</strong></div>
+ <div class="paper-stat"><span class="small">Maximum drawdown</span><strong id="prospectiveDD">--</strong></div>
+ <div class="paper-stat"><span class="small">Open / pending</span><strong id="prospectiveOpen">0</strong></div>
+ <div class="paper-stat"><span class="small">Rules</span><strong>DOWN · 30 · 5</strong></div>
+</div>
+<div class="small" id="prospectiveDetail" style="margin-top:8px">The tracker only records new signals after you start it. Keep this dashboard open for continuous checks.</div>
+<div class="paper-stat" style="margin-top:9px;overflow-x:auto">
+ <strong>RECENT PROSPECTIVE TRADES</strong>
+ <table><thead><tr><th>Signal time</th><th>Score</th><th>Entry</th><th>Exit</th><th>Net bps*</th><th>Result</th></tr></thead>
+ <tbody id="prospectiveRows"><tr><td colspan="6">No prospective trades recorded.</td></tr></tbody></table>
+ <div class="small">*Net BTC price movement after a fixed 4 bps assumed round-trip friction. This is not Kalshi P&amp;L and does not represent a filled contract.</div>
+</div>
+</section>
+
 <section class="card">
 <h2>V4 CHECKPOINT ACCURACY TRACKER</h2>
 <div class="small" id="v4Status">Waiting for the first six-checkpoint cloud collection...</div>
@@ -1593,6 +1619,92 @@ function runStrategyOptimizer(){
  document.getElementById("optimizerNotes").textContent=notes.join("\n");
  status.textContent="Comparison complete · "+summaries.length+" scenarios · 3 chronological folds · no overlapping positions.";
 }
+const prospectiveKey="btcProspectiveDownV1";
+let prospectiveState=JSON.parse(localStorage.getItem(prospectiveKey)||"null")||{active:false,startedAt:null,lastSignalCandle:0,open:null,trades:[],events:[],lastCheck:null};
+let prospectiveTimer=null;
+function prospectiveSave(){localStorage.setItem(prospectiveKey,JSON.stringify(prospectiveState));}
+function prospectiveStats(){
+ const rows=prospectiveState.trades||[];
+ const wins=rows.filter(t=>t.netBps>0).length;
+ let equity=0,peak=0,dd=0;
+ rows.forEach(t=>{equity+=t.netBps;peak=Math.max(peak,equity);dd=Math.max(dd,peak-equity);});
+ document.getElementById("prospectiveTrades").textContent=String(rows.length);
+ document.getElementById("prospectiveWin").textContent=rows.length?(100*wins/rows.length).toFixed(1)+"%":"--";
+ document.getElementById("prospectiveNet").textContent=rows.length?(equity>=0?"+":"")+equity.toFixed(2)+" bps":"--";
+ document.getElementById("prospectiveDD").textContent=rows.length?dd.toFixed(2)+" bps":"--";
+ document.getElementById("prospectiveOpen").textContent=prospectiveState.open?"1":"0";
+ const body=document.getElementById("prospectiveRows");
+ body.innerHTML=rows.slice(-12).reverse().map(t=>"<tr><td>"+new Date(t.signalTime).toLocaleString()+"</td><td>"+t.score+"</td><td>"+t.entry.toFixed(2)+"</td><td>"+t.exit.toFixed(2)+"</td><td>"+(t.netBps>=0?"+":"")+t.netBps.toFixed(2)+"</td><td>"+(t.netBps>0?"WIN":"LOSS")+"</td></tr>").join("")||'<tr><td colspan="6">No prospective trades recorded.</td></tr>';
+ document.getElementById("prospectiveStatus").textContent=(prospectiveState.active?"RUNNING":"PAUSED")+" · last checked "+(prospectiveState.lastCheck?new Date(prospectiveState.lastCheck).toLocaleTimeString():"not yet");
+ document.getElementById("prospectiveDetail").textContent="Started "+(prospectiveState.startedAt?new Date(prospectiveState.startedAt).toLocaleString():"not yet")+". Fixed rule: DOWN score ≤ -30; next-candle OPEN entry; CLOSE after five 15-minute candles; 4 bps assumed friction. "+(prospectiveState.open?"One simulated position is waiting to exit.":"No simulated position currently open.");
+}
+async function prospectiveFetch(){
+ const end=Date.now(),start=end-3*86400000;
+ const url="https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=900&start="+encodeURIComponent(new Date(start).toISOString())+"&end="+encodeURIComponent(new Date(end).toISOString());
+ const response=await fetch(url,{cache:"no-store"});
+ if(!response.ok)throw new Error("Coinbase data request failed (HTTP "+response.status+").");
+ const rows=await response.json();
+ return rows.map(k=>({time:Number(k[0])*1000,low:Number(k[1]),high:Number(k[2]),open:Number(k[3]),close:Number(k[4]),volume:Number(k[5])})).filter(c=>c.time+900000<=end&&[c.time,c.low,c.high,c.open,c.close,c.volume].every(Number.isFinite)).sort((a,b)=>a.time-b.time);
+}
+async function prospectiveCheck(){
+ if(!prospectiveState.active)return;
+ const status=document.getElementById("prospectiveStatus");
+ try{
+  const data=await prospectiveFetch();
+  if(data.length<40)throw new Error("Not enough completed candles returned.");
+  const latest=data[data.length-1];
+  if(prospectiveState.open){
+   const p=prospectiveState.open;
+   const exitCandle=data.find(c=>c.time===p.exitCandleTime);
+   if(exitCandle){
+    const gross=(p.entry-exitCandle.close)/p.entry*10000;
+    const net=gross-4;
+    prospectiveState.trades.push({...p,exit:exitCandle.close,exitTime:exitCandle.time, grossBps:gross,netBps:net});
+    prospectiveState.events.push({time:Date.now(),type:"CLOSED",score:p.score,netBps:net});
+    prospectiveState.open=null;
+   }
+  }
+  if(!prospectiveState.open&&latest.time>prospectiveState.lastSignalCandle&&latest.time>=prospectiveState.startedAt){
+   const index=data.findIndex(c=>c.time===latest.time);
+   const model=analyze(data.slice(0,index+1),null);
+   prospectiveState.lastSignalCandle=latest.time;
+   if(model&&model.score<=-30){
+    const entryCandle=data[index+1];
+    const exitCandleTime=latest.time+5*900000;
+    prospectiveState.open={signalTime:latest.time,score:Math.round(model.score),entry:entryCandle?entryCandle.open:null,entryTime:entryCandle?entryCandle.time:null,exitCandleTime};
+    if(!entryCandle)prospectiveState.open.waitingForEntry=true;
+    prospectiveState.events.push({time:Date.now(),type:"SIGNAL",score:Math.round(model.score)});
+   }
+  }
+  if(prospectiveState.open&&prospectiveState.open.waitingForEntry){
+   const p=prospectiveState.open,entryCandle=data.find(c=>c.time===p.signalTime+900000);
+   if(entryCandle){p.entry=entryCandle.open;p.entryTime=entryCandle.time;delete p.waitingForEntry;}
+  }
+  prospectiveState.lastCheck=Date.now();
+  prospectiveSave();
+  prospectiveStats();
+ }catch(e){status.textContent="Tracker check failed: "+e.message;}
+}
+function prospectiveStart(){
+ if(prospectiveTimer)clearInterval(prospectiveTimer);
+ prospectiveState.active=true;
+ if(!prospectiveState.startedAt)prospectiveState.startedAt=Date.now();
+ prospectiveSave();prospectiveStats();prospectiveCheck();
+ prospectiveTimer=setInterval(()=>{if(!document.hidden)prospectiveCheck();},60000);
+}
+function prospectivePause(){
+ prospectiveState.active=false;
+ prospectiveSave();
+ if(prospectiveTimer){clearInterval(prospectiveTimer);prospectiveTimer=null;}
+ prospectiveStats();
+}
+function setupProspectiveTracker(){
+ prospectiveStats();
+ document.getElementById("prospectiveStart").addEventListener("click",prospectiveStart);
+ document.getElementById("prospectivePause").addEventListener("click",prospectivePause);
+ document.getElementById("prospectiveRefresh").addEventListener("click",prospectiveCheck);
+ if(prospectiveState.active)prospectiveStart();
+}
 function runBacktest(){
  let tested=0,correct=0;
  for(let i=30;i<candles.length-1;i++){
@@ -2400,6 +2512,7 @@ document.getElementById("optimizerRun").addEventListener("click",runStrategyOpti
 document.getElementById("replaySlider").addEventListener("input",e=>replayRender(e.target.value));
 document.getElementById("replayPrev").addEventListener("click",()=>replayRender(Number(document.getElementById("replaySlider").value)-1));
 document.getElementById("replayNext").addEventListener("click",()=>replayRender(Number(document.getElementById("replaySlider").value)+1));
+setupProspectiveTracker();
 setupKalshiDemo();
 setupKalshiLifecycle();
 setupKalshiAutoPreview();
