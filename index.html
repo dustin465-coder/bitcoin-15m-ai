@@ -2036,7 +2036,8 @@ function kalshiQuoteDollars(m,dollarField,centsField){
  return null;
 }
 async function kalshiLoadLiveMarket(){
- kalshiMarketQuotes=null;
+ // Keep the last verified quote available during the next refresh; paperLiveQuote
+ // independently rejects it once it is older than PAPER_QUOTE_MAX_AGE_MS.
  const ticker=paperActiveTicker;
  const up=document.getElementById("kalshiLiveUp"),down=document.getElementById("kalshiLiveDown"),upBid=document.getElementById("kalshiLiveUpBid"),downBid=document.getElementById("kalshiLiveDownBid"),meta=document.getElementById("kalshiLiveMeta"),buy=document.getElementById("kalshiBuyYes"),sell=document.getElementById("kalshiSellYes");
  if(!ticker){up.textContent="--";down.textContent="--";upBid.textContent="Bid: --";downBid.textContent="Bid: --";meta.textContent="Waiting for an active production KXBTC15M market.";buy.disabled=true;sell.disabled=true;return;}
@@ -2048,6 +2049,12 @@ async function kalshiLoadLiveMarket(){
   kalshiMarketQuotes={ticker,yesAsk,noAsk,yesBid,noBid,fetchedAt:Date.now(),feeMultiplier:Number(m.fee_multiplier)||1,closeTime:m.close_time||null};
   meta.textContent="PRODUCTION market: "+ticker+" · "+status+" · closes "+(m.close_time?new Date(m.close_time).toLocaleTimeString():"unknown")+" · updated "+new Date().toLocaleTimeString()+(quoteOk?" · live asks verified":" · waiting for valid asks");
   buy.disabled=!quoteOk;sell.disabled=!quoteOk;
+  // Apply the dashboard's currently displayed action as soon as a fresh quote arrives.
+  // This prevents a valid signal being missed between the signal and quote polling cycles.
+  if(quoteOk&&paperBot&&paperBot.enabled){
+   const currentAction=document.getElementById("signal")?.textContent?.trim()||"";
+   processPaperBot(currentAction);
+  }
   if(paperBot&&paperBot.position)await kalshiResolvePaperPosition();
  }catch(e){meta.textContent="Live Kalshi quote error: "+e.message;buy.disabled=true;sell.disabled=true;}
 }
