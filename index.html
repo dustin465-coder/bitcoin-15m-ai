@@ -603,7 +603,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 
 <section class="card" id="autoPaperCard">
 <h2>AUTOMATIC DEMO BOT · KALSHI-STYLE PAPER TRADING</h2>
-<div class="small">Simulation only. No Kalshi connection, no orders, and no real money. It automatically follows BUY and CASH OUT signals from this dashboard. Each simulated contract is assumed to cost 50¢; this is a fixed test assumption, not a live Kalshi quote. Fees and slippage are excluded.</div>
+<div class="small">Paper simulation only: no orders are sent. Entries use the selected Kalshi DEMO market’s live UP/DOWN ask price; exits use the corresponding live bid. Contract quantity is calculated from the actual quoted price and a $10 maximum position budget, including an estimated Kalshi taker fee. If a fresh quote is unavailable, the bot will not open or cash out a position.</div>
 <div class="paper-controls" style="margin-top:12px">
 <button id="paperBotToggle" class="paper-off" type="button">Start demo bot</button>
 <button id="paperBotReset" type="button">Reset demo account</button>
@@ -621,7 +621,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 <div class="paper-stat"><span class="small">Entry cost</span><strong id="paperEntryCost">--</strong></div>
 <div class="paper-stat"><span class="small">Unrealized demo P&amp;L</span><strong id="paperUnrealized">--</strong></div>
 </div>
-<div class="small" id="paperBotMessage">Bot is off. Start it to automatically simulate qualified BUY signals. It uses $10 per trade, one open position at a time, and a 50¢ assumed entry.</div>
+<div class="small" id="paperBotMessage">Bot is off. Start it to simulate qualified BUY signals using live Kalshi DEMO contract asks and bids. Maximum entry budget is $10 including estimated taker fees; one position at a time.</div>
 <div style="overflow-x:auto;margin-top:12px">
 <table><thead><tr><th>Time</th><th>Side</th><th>Contracts</th><th>Entry</th><th>Exit</th><th>Net P&amp;L</th><th>Exit type</th></tr></thead>
 <tbody id="paperBotJournal"><tr><td colspan="7">No demo trades yet.</td></tr></tbody></table>
@@ -1827,13 +1827,32 @@ function loadPaperBot(){
  catch(e){return {enabled:false,bankroll:100,startingBankroll:100,position:null,trades:[]};}
 }
 let paperBot=loadPaperBot();
-const PAPER_TRADE_BUDGET=10, PAPER_ENTRY_PRICE=0.50;
+const PAPER_TRADE_BUDGET=10;
+const PAPER_QUOTE_MAX_AGE_MS=30000;
+function paperTakerFee(price,contracts,multiplier=1){
+ if(!Number.isFinite(price)||price<=0||price>=1||!Number.isFinite(contracts)||contracts<=0)return 0;
+ const raw=multiplier*0.07*contracts*price*(1-price);
+ return Math.ceil(raw*100-1e-9)/100;
+}
+function paperLiveQuote(side,kind){
+ const q=marketQuotes;
+ if(!q||Date.now()-q.fetchedAt>PAPER_QUOTE_MAX_AGE_MS)return null;
+ const price=side==="UP"?(kind==="ask"?q.yesAsk:q.yesBid):(kind==="ask"?q.noAsk:q.noBid);
+ return Number.isFinite(price)&&price>0&&price<1?price:null;
+}
+function paperAffordableContracts(price,budget){
+ let n=Math.floor(budget/price);
+ while(n>0&&n*price+paperTakerFee(price,n)>budget)n--;
+ return n;
+}
 function savePaperBot(){localStorage.setItem(PAPER_BOT_KEY,JSON.stringify(paperBot));renderPaperBot();}
 function closePaperPosition(exitPrice,exitType,detail){
  const p=paperBot.position;if(!p)return;
- const proceeds=p.contracts*Math.max(0,Math.min(1,exitPrice));
+ const price=Math.max(0,Math.min(1,exitPrice));
+ const exitFee=exitType==="SETTLEMENT"?0:paperTakerFee(price,p.contracts,p.feeMultiplier??1);
+ const proceeds=p.contracts*price-exitFee;
  const pnl=proceeds-p.cost;paperBot.bankroll+=proceeds;
- paperBot.trades.push({time:nowServer(),side:p.side,contracts:p.contracts,entry:p.entryPrice,exit:exitPrice,pnl,exitType,round:p.round,detail:detail||""});
+ paperBot.trades.push({time:nowServer(),side:p.side,contracts:p.contracts,entry:p.entryPrice,exit:price,entryFee:p.entryFee||0,exitFee,pnl,exitType,round:p.round,detail:detail||""});
  paperBot.trades=paperBot.trades.slice(-50);paperBot.position=null;
 }
 function settlePaperAtRoundBoundary(){
@@ -1848,19 +1867,26 @@ function processPaperBot(action){
  if(paperBot.position){
   paperBot.position.lastTwap=Number.isFinite(twapValue)?twapValue:paperBot.position.lastTwap;
   if(action==="CASH OUT "+paperBot.position.side){
-   const p=liveProbability&&liveProbability.valid?(paperBot.position.side==="UP"?liveProbability.probabilityUp:liveProbability.probabilityDown):null;
-   if(Number.isFinite(p)){closePaperPosition(p,"MODEL EXIT","Exit valued at model estimate, not an executable market quote.");savePaperBot();}
+   const bid=paperLiveQuote(paperBot.position.side,"bid");
+   if(bid===null){$("paperBotMessage").textContent="Cash-out signal detected, but no fresh Kalshi DEMO bid is available. Position remains open; waiting for a current quote.";return;}
+   closePaperPosition(bid,"MODEL EXIT","Exited at the live Kalshi DEMO bid; estimated taker fee deducted. Paper simulation only.");
+   savePaperBot();
   }else{savePaperBot();}
   return;
  }
  if(action!=="BUY UP"&&action!=="BUY DOWN")return;
  if(!Number.isFinite(openingReference)||!Number.isFinite(twapValue)||activeRound<=0)return;
- const contracts=Math.floor(PAPER_TRADE_BUDGET/PAPER_ENTRY_PRICE);
- if(paperBot.bankroll<PAPER_TRADE_BUDGET){$("paperBotMessage").textContent="Insufficient demo balance for another $10 simulated position.";return;}
  const side=action==="BUY UP"?"UP":"DOWN";
- paperBot.bankroll-=PAPER_TRADE_BUDGET;
- paperBot.position={side,round:activeRound,contracts,entryPrice:PAPER_ENTRY_PRICE,cost:contracts*PAPER_ENTRY_PRICE,openedAt:nowServer(),openingReference,lastTwap:twapValue};
- $("paperBotMessage").textContent="Automatically opened "+side+" demo position: "+contracts+" contracts at assumed 50¢ each. No real order was placed.";
+ const ask=paperLiveQuote(side,"ask");
+ if(ask===null){$("paperBotMessage").textContent="BUY signal detected, but no fresh Kalshi DEMO ask is available. No simulated trade opened.";return;}
+ const budget=Math.min(PAPER_TRADE_BUDGET,paperBot.bankroll);
+ const contracts=paperAffordableContracts(ask,budget);
+ if(contracts<1){$("paperBotMessage").textContent="Current "+side+" ask plus estimated fee exceeds the available $10 position budget or demo balance.";return;}
+ const entryFee=paperTakerFee(ask,contracts);
+ const cost=contracts*ask+entryFee;
+ paperBot.bankroll-=cost;
+ paperBot.position={side,round:activeRound,contracts,entryPrice:ask,cost,entryFee,feeMultiplier:1,openedAt:nowServer(),openingReference,lastTwap:twapValue,marketTicker:marketQuotes.ticker};
+ $("paperBotMessage").textContent="Opened "+side+" paper position using live Kalshi DEMO ask "+money(ask)+": "+contracts+" contracts; contract cost "+money(contracts*ask)+", estimated entry fee "+money(entryFee)+", total "+money(cost)+". No real order was placed.";
  savePaperBot();
 }
 function renderPaperBot(){
@@ -1879,8 +1905,8 @@ function renderPaperBot(){
  el("paperPosition").textContent=p?p.side:"None";
  el("paperContracts").textContent=p?p.contracts:"--";
  el("paperEntryCost").textContent=p?money(p.cost):"--";
- const mark=p&&liveProbability&&liveProbability.valid?(p.side==="UP"?liveProbability.probabilityUp:liveProbability.probabilityDown):null;
- const unrealized=p&&Number.isFinite(mark)?p.contracts*mark-p.cost:null;
+ const mark=p?paperLiveQuote(p.side,"bid"):null;
+ const unrealized=p&&Number.isFinite(mark)?p.contracts*mark-paperTakerFee(mark,p.contracts,p.feeMultiplier??1)-p.cost:null;
  el("paperUnrealized").textContent=unrealized===null?"--":(unrealized>=0?"+":"")+money(unrealized);
  el("paperBotJournal").innerHTML=closed.slice().reverse().map(t=>"<tr><td>"+new Date(t.time).toLocaleTimeString()+"</td><td>"+t.side+"</td><td>"+t.contracts+"</td><td>"+money(t.entry)+"</td><td>"+money(t.exit)+"</td><td class='"+(t.pnl>=0?"green":"red")+"'>"+(t.pnl>=0?"+":"")+money(t.pnl)+"</td><td>"+t.exitType+"</td></tr>").join("")||'<tr><td colspan="7">No demo trades yet.</td></tr>';
 }
@@ -2060,7 +2086,8 @@ async function kalshiLoadLiveMarket(){
   upBid.textContent="Bid: "+(live?fmt(yesBid):"--"); downBid.textContent="Bid: "+(live?fmt(noBid):"--");
   const close=m.close_time?new Date(m.close_time).toLocaleTimeString():"not supplied";
   const quoteOk=live&&yesAsk!==null&&noAsk!==null;
-  meta.textContent="Market: "+ticker+" · status: "+(m.status||"unknown")+" · closes: "+close+" · updated: "+new Date().toLocaleTimeString()+(quoteOk?" · both live asks verified":live?" · waiting for both live asks":" · market closed/expired");
+  marketQuotes={ticker,yesAsk,noAsk,yesBid,noBid,fetchedAt:Date.now()};
+  meta.textContent="Market: "+ticker+" · status: "+(m.status||"unknown")+" · closes: "+close+" · updated: "+new Date().toLocaleTimeString()+(quoteOk?" · live asks verified":live?" · waiting for both live asks":" · market closed/expired");
   buy.disabled=!quoteOk;sell.disabled=!quoteOk;
  }catch(e){meta.textContent="Live price error: "+e.message;buy.disabled=true;sell.disabled=true;}
 }
