@@ -2079,11 +2079,11 @@ async function kalshiLoadLiveMarket(){
  buy.disabled=true;sell.disabled=true;
  try{
   const data=await kalshiPublicApi("markets/"+encodeURIComponent(ticker)),m=data.market||{},status=String(m.status||"").toLowerCase(),closeMs=m.close_time?Date.parse(m.close_time):NaN,live=status==="open"&&Number.isFinite(closeMs)&&closeMs>Date.now();
-  const yesAsk=kalshiQuoteDollars(m,"yes_ask_dollars","yes_ask"),noAsk=kalshiQuoteDollars(m,"no_ask_dollars","no_ask"),yesBid=kalshiQuoteDollars(m,"yes_bid_dollars","yes_bid"),noBid=kalshiQuoteDollars(m,"no_bid_dollars","no_bid"),fmt=v=>v===null?"--":"$"+v.toFixed(4),quoteOk=live&&yesAsk!==null&&noAsk!==null;
+  const yesAsk=kalshiQuoteDollars(m,"yes_ask_dollars","yes_ask"),noAsk=kalshiQuoteDollars(m,"no_ask_dollars","no_ask"),yesBid=kalshiQuoteDollars(m,"yes_bid_dollars","yes_bid"),noBid=kalshiQuoteDollars(m,"no_bid_dollars","no_bid"),fmt=v=>v===null?"--":"$"+v.toFixed(4),quoteOk=live&&(yesAsk!==null||noAsk!==null);
   up.textContent=live?fmt(yesAsk):"--";down.textContent=live?fmt(noAsk):"--";upBid.textContent="Bid: "+(live?fmt(yesBid):"--");downBid.textContent="Bid: "+(live?fmt(noBid):"--");
   kalshiMarketQuotes={ticker,yesAsk,noAsk,yesBid,noBid,fetchedAt:Date.now(),feeMultiplier:Number(m.fee_multiplier)||1,closeTime:m.close_time||null};
-  meta.textContent="PRODUCTION market: "+ticker+" · "+status+" · closes "+(m.close_time?new Date(m.close_time).toLocaleTimeString():"unknown")+" · updated "+new Date().toLocaleTimeString()+(quoteOk?" · live asks verified":" · waiting for valid asks");
-  buy.disabled=!quoteOk;sell.disabled=!quoteOk;
+  meta.textContent="PRODUCTION market: "+ticker+" · "+status+" · closes "+(m.close_time?new Date(m.close_time).toLocaleTimeString():"unknown")+" · updated "+new Date().toLocaleTimeString()+" · UP ask "+fmt(yesAsk)+" / DOWN ask "+fmt(noAsk)+(quoteOk?" · at least one live ask verified":" · waiting for valid asks");
+  buy.disabled=!live||yesAsk===null;sell.disabled=!live||yesBid===null;
   // Apply the dashboard's currently displayed action as soon as a fresh quote arrives.
   // This prevents a valid signal being missed between the signal and quote polling cycles.
   if(quoteOk&&paperBot&&paperBot.enabled){
