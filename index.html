@@ -676,6 +676,7 @@ let openingReference=null;
 let openingTimestamp=null;
 let twapConnected=false;
 let kalshiMarketQuotes=null;
+let paperActiveTicker="";
 let polykalshiMarketQuotes=null;
 // Audio permission does not survive a page reload in iOS Safari. Require a fresh tap each visit.
 let soundEnabled=false;
@@ -2012,18 +2013,12 @@ async function kalshiLoadMarkets(){
 }
 async function kalshiLoadPaperMarkets(){
  try{
-  const data=await kalshiPublicApi("markets?series_ticker=KXBTC15M&status=open&limit=1000");
-  const select=document.getElementById("kalshiMarket"),previous=select.value,now=Date.now();
+  const data=await kalshiPublicApi("markets?series_ticker=KXBTC15M&status=open&limit=1000"),now=Date.now();
   const markets=(data.markets||[]).filter(m=>String(m.ticker||"").startsWith("KXBTC15M-")&&String(m.status||"").toLowerCase()==="open"&&m.close_time&&Date.parse(m.close_time)>now).sort((x,y)=>Date.parse(x.close_time)-Date.parse(y.close_time));
-  select.innerHTML="";
-  if(!markets.length){select.add(new Option("No active KXBTC15M market found",""));select.value="";kalshiSetMessage("No active production KXBTC15M market is available. The paper bot will not trade without a verified market.",true);kalshiLastMarketRefresh=Date.now();await kalshiLoadLiveMarket();return;}
-  select.add(new Option("Choose current live Bitcoin market",""));
-  markets.forEach(m=>select.add(new Option((m.title||"BTC 15-minute")+" · "+m.ticker,m.ticker)));
-  select.value=markets.some(m=>m.ticker===previous)?previous:markets[0].ticker;
-  kalshiLastMarketRefresh=Date.now();
-  kalshiSetMessage("Connected to Kalshi PRODUCTION public market data · "+markets.length+" active KXBTC15M market(s). Paper trades remain local simulations.");
+  if(!markets.length){paperActiveTicker="";kalshiMarketQuotes=null;document.getElementById("kalshiLiveMeta").textContent="No active production KXBTC15M market found. Paper bot will wait.";return;}
+  if(!markets.some(m=>m.ticker===paperActiveTicker))paperActiveTicker=markets[0].ticker;
   await kalshiLoadLiveMarket();
- }catch(e){kalshiSetMessage("Live Kalshi market discovery failed: "+e.message,true);}
+ }catch(e){document.getElementById("kalshiLiveMeta").textContent="Production paper feed error: "+e.message;}
 }
 function kalshiQuoteDollars(m,dollarField,centsField){
  const raw=m?.[dollarField];
@@ -2040,7 +2035,7 @@ function kalshiQuoteDollars(m,dollarField,centsField){
 }
 async function kalshiLoadLiveMarket(){
  kalshiMarketQuotes=null;
- const ticker=document.getElementById("kalshiMarket").value;
+ const ticker=paperActiveTicker;
  const up=document.getElementById("kalshiLiveUp"),down=document.getElementById("kalshiLiveDown"),upBid=document.getElementById("kalshiLiveUpBid"),downBid=document.getElementById("kalshiLiveDownBid"),meta=document.getElementById("kalshiLiveMeta"),buy=document.getElementById("kalshiBuyYes"),sell=document.getElementById("kalshiSellYes");
  if(!ticker){up.textContent="--";down.textContent="--";upBid.textContent="Bid: --";downBid.textContent="Bid: --";meta.textContent="Waiting for an active production KXBTC15M market.";buy.disabled=true;sell.disabled=true;return;}
  buy.disabled=true;sell.disabled=true;
@@ -2494,7 +2489,7 @@ function setupKalshiDemo(){
  document.getElementById("kalshiLoadPositions").addEventListener("click",kalshiLoadPositions);
  document.getElementById("kalshiLoadOrders").addEventListener("click",kalshiLoadOrders);
  document.getElementById("kalshiLoadFills").addEventListener("click",kalshiLoadFills);
- document.getElementById("kalshiMarket").addEventListener("change",kalshiLoadLiveMarket);
+ document.getElementById("kalshiMarket").addEventListener("change",()=>{});
  document.getElementById("kalshiBuyYes").addEventListener("click",()=>kalshiPlaceOrder("bid"));
  document.getElementById("kalshiSellYes").addEventListener("click",()=>kalshiPlaceOrder("ask"));
  document.getElementById("kalshiSupervisedTestOrder").addEventListener("click",kalshiSubmitSupervisedTestOrder);
@@ -2518,7 +2513,7 @@ setInterval(()=>{if(!document.hidden)kalshiLoadPaperMarkets();},60000);
 setInterval(()=>{if(document.getElementById("kalshiConnectionState")?.textContent==="DEMO CONNECTED"&&!document.hidden)kalshiUpdateLifecycle();},120000);
 // One decision-monitor poller only (the button triggers an immediate first check).
 setInterval(()=>{if(!document.hidden)updateKalshiAutoPreview();},15000);
-setInterval(()=>{if(document.getElementById("kalshiMarket").value&&!document.hidden)kalshiLoadLiveMarket();},10000);
+setInterval(()=>{if(paperActiveTicker&&!document.hidden)kalshiLoadLiveMarket();},10000);
 setInterval(()=>{if(paperBot.position&&!document.hidden)kalshiResolvePaperPosition();},15000);
 </script>
 </body>
