@@ -2051,7 +2051,7 @@ async function kalshiLoadMarkets(){
 async function kalshiLoadPaperMarkets(){
  try{
   const data=await kalshiPublicApi("markets?series_ticker=KXBTC15M&status=open&limit=1000"),now=Date.now();
-  const markets=(data.markets||[]).filter(m=>String(m.ticker||"").startsWith("KXBTC15M-")&&String(m.status||"").toLowerCase()==="open"&&m.close_time&&Date.parse(m.close_time)>now).sort((x,y)=>Date.parse(x.close_time)-Date.parse(y.close_time));
+  const markets=(data.markets||[]).filter(m=>String(m.ticker||"").startsWith("KXBTC15M-")&&["open","active"].includes(String(m.status||"").toLowerCase())&&m.close_time&&Date.parse(m.close_time)>now).sort((x,y)=>Date.parse(x.close_time)-Date.parse(y.close_time));
   if(!markets.length){paperActiveTicker="";kalshiMarketQuotes=null;document.getElementById("kalshiLiveMeta").textContent="No active production KXBTC15M market found. Paper bot will wait.";return;}
   if(!markets.some(m=>m.ticker===paperActiveTicker))paperActiveTicker=markets[0].ticker;
   await kalshiLoadLiveMarket();
@@ -2078,7 +2078,7 @@ async function kalshiLoadLiveMarket(){
  if(!ticker){up.textContent="--";down.textContent="--";upBid.textContent="Bid: --";downBid.textContent="Bid: --";meta.textContent="Waiting for an active production KXBTC15M market.";buy.disabled=true;sell.disabled=true;return;}
  buy.disabled=true;sell.disabled=true;
  try{
-  const data=await kalshiPublicApi("markets/"+encodeURIComponent(ticker)),m=data.market||{},status=String(m.status||"").toLowerCase(),closeMs=m.close_time?Date.parse(m.close_time):NaN,live=status==="open"&&Number.isFinite(closeMs)&&closeMs>Date.now();
+  const data=await kalshiPublicApi("markets/"+encodeURIComponent(ticker)),m=data.market||{},status=String(m.status||"").toLowerCase(),closeMs=m.close_time?Date.parse(m.close_time):NaN,live=["open","active"].includes(status)&&Number.isFinite(closeMs)&&closeMs>Date.now();
   const yesAsk=kalshiQuoteDollars(m,"yes_ask_dollars","yes_ask"),noAsk=kalshiQuoteDollars(m,"no_ask_dollars","no_ask"),yesBid=kalshiQuoteDollars(m,"yes_bid_dollars","yes_bid"),noBid=kalshiQuoteDollars(m,"no_bid_dollars","no_bid"),fmt=v=>v===null?"--":"$"+v.toFixed(4),quoteOk=live&&(yesAsk!==null||noAsk!==null);
   up.textContent=live?fmt(yesAsk):"--";down.textContent=live?fmt(noAsk):"--";upBid.textContent="Bid: "+(live?fmt(yesBid):"--");downBid.textContent="Bid: "+(live?fmt(noBid):"--");
   kalshiMarketQuotes={ticker,yesAsk,noAsk,yesBid,noBid,fetchedAt:Date.now(),feeMultiplier:Number(m.fee_multiplier)||1,closeTime:m.close_time||null};
