@@ -324,8 +324,9 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
   <div class="paper-stat"><span class="small">Test max drawdown</span><strong id="optimizerDD">--</strong></div>
  </div>
  <div style="overflow-x:auto;margin-top:9px">
-  <table><thead><tr><th>Direction</th><th>Trades</th><th>Win rate</th><th>Net bps</th><th>Average net bps</th></tr></thead>
-  <tbody id="optimizerSides"><tr><td colspan="5">No optimizer results yet.</td></tr></tbody></table>
+  <strong>BEST WALK-FORWARD STRATEGIES BY DIRECTION AND FRICTION</strong>
+  <table><thead><tr><th>Strategy</th><th>Friction</th><th>Trades</th><th>Win rate</th><th>Net bps</th><th>Max DD</th><th>Avg/trade</th></tr></thead>
+  <tbody id="optimizerSides"><tr><td colspan="7">No optimizer results yet.</td></tr></tbody></table>
  </div>
  <div class="small" id="optimizerNotes" style="margin-top:8px;white-space:pre-wrap">The optimizer does not calculate Kalshi contract returns or actual trading P&amp;L.</div>
 </div>
@@ -1510,24 +1511,26 @@ async function runHistoricalReplay(){
  finally{button.disabled=false;}
 }
 function requestsText(count){return "Coinbase BTC-USD 15-minute candles";}
-function optimizerStats(rows,friction){
- const trades=rows.map(x=>({...x,netBps:x.grossBps-friction}));
+function optimizerStats(rows){
+ const trades=rows.slice().sort((a,b)=>a.entryTime-b.entryTime);
  const wins=trades.filter(x=>x.netBps>0).length;
  let equity=0,peak=0,dd=0;
  for(const t of trades){equity+=t.netBps;peak=Math.max(peak,equity);dd=Math.max(dd,peak-equity);}
  const net=trades.reduce((n,t)=>n+t.netBps,0);
  return {trades,wins,winRate:trades.length?100*wins/trades.length:0,net,avg:trades.length?net/trades.length:0,drawdown:dd};
 }
-function optimizerSimulate(data,startIndex,endIndex,threshold,hold,friction){
+function optimizerSimulate(data,models,startIndex,endIndex,threshold,hold,mode,friction){
  const rows=[];
  let i=Math.max(30,startIndex);
  while(i+hold<endIndex){
-  const model=analyze(data.slice(0,i+1),null);
-  if(model&&Math.abs(model.score)>=threshold){
+  const model=models[i];
+  const direction=model&&model.score>0?"UP":model&&model.score<0?"DOWN":"WAIT";
+  const allowed=mode==="BOTH"||direction===mode;
+  if(model&&allowed&&Math.abs(model.score)>=threshold){
    const entryIndex=i+1,exitIndex=i+hold;
    const entry=data[entryIndex].open,exit=data[exitIndex].close;
-   const grossBps=(model.score>0?(exit-entry):(entry-exit))/entry*10000;
-   rows.push({time:data[i].time,entryTime:data[entryIndex].time,exitTime:data[exitIndex].time,direction:model.score>0?"UP":"DOWN",score:model.score,entry,exit,grossBps,netBps:grossBps-friction,hold});
+   const grossBps=(direction==="UP"?(exit-entry):(entry-exit))/entry*10000;
+   rows.push({time:data[i].time,entryTime:data[entryIndex].time,exitTime:data[exitIndex].time,direction,score:model.score,entry,exit,grossBps,netBps:grossBps-friction,hold});
    i+=hold;
   }else i++;
  }
@@ -1537,48 +1540,58 @@ function runStrategyOptimizer(){
  const status=document.getElementById("optimizerStatus");
  const data=replayCandlesData;
  if(data.length<500){status.textContent="Run the historical replay first; at least 500 candles are needed.";return;}
- const friction=Number(document.getElementById("optimizerFriction").value);
- if(!Number.isFinite(friction)||friction<0||friction>100){status.textContent="Enter friction from 0 to 100 basis points.";return;}
- const thresholds=[10,15,20,25,30],holds=[1,3,5],folds=[];
+ const thresholds=[10,15,20,25,30],holds=[1,3,5],modes=["BOTH","UP","DOWN"],frictions=[4,8,12,20],folds=[];
+ const models=data.map((c,i)=>i<30?null:analyze(data.slice(0,i+1),null));
  const boundaries=[0,0.50,0.65,0.80,1.00].map(p=>Math.floor(data.length*p));
- for(let f=0;f<3;f++){
-  const trainEnd=boundaries[f+1],testStart=trainEnd,testEnd=boundaries[f+2];
-  if(testEnd-testStart<40)continue;
-  const candidates=[];
-  for(const threshold of thresholds)for(const hold of holds){
-   const train=optimizerStats(optimizerSimulate(data,30,trainEnd,threshold,hold,friction),0);
-   if(train.trades.length>=20)candidates.push({threshold,hold,train});
+ const summaries=[];
+ for(const mode of modes)for(const friction of frictions){
+  const foldResults=[];
+  for(let f=0;f<3;f++){
+   const trainEnd=boundaries[f+1],testStart=trainEnd,testEnd=boundaries[f+2];
+   if(testEnd-testStart<40)continue;
+   const candidates=[];
+   for(const threshold of thresholds)for(const hold of holds){
+    const train=optimizerStats(optimizerSimulate(data,models,30,trainEnd,threshold,hold,mode,friction));
+    if(train.trades.length>=20)candidates.push({threshold,hold,train});
+   }
+   if(!candidates.length)continue;
+   candidates.sort((a,b)=>b.train.avg-a.train.avg);
+   const chosen=candidates[0];
+   const test=optimizerSimulate(data,models,testStart,testEnd,chosen.threshold,chosen.hold,mode,friction);
+   foldResults.push({fold:f+1,threshold:chosen.threshold,hold:chosen.hold,test});
   }
-  if(!candidates.length)continue;
-  candidates.sort((a,b)=>b.train.avg-a.train.avg);
-  const chosen=candidates[0];
-  const test=optimizerSimulate(data,testStart,testEnd,chosen.threshold,chosen.hold,friction);
-  folds.push({fold:f+1,trainStart:data[30].time,trainEnd:data[trainEnd-1].time,testStart:data[testStart].time,testEnd:data[testEnd-1].time,threshold:chosen.threshold,hold:chosen.hold,trainTrades:chosen.train.trades.length,test});
+  const all=foldResults.flatMap(f=>f.test).sort((a,b)=>a.entryTime-b.entryTime);
+  if(all.length){
+   const stats=optimizerStats(all);
+   const positiveFolds=foldResults.filter(f=>optimizerStats(f.test).net>0).length;
+   summaries.push({mode,friction,foldResults,stats,positiveFolds});
+  }
  }
- const all=folds.flatMap(f=>f.test).sort((a,b)=>a.entryTime-b.entryTime);
- const summary=optimizerStats(all,0);
- const up=optimizerStats(all.filter(t=>t.direction==="UP"),0);
- const down=optimizerStats(all.filter(t=>t.direction==="DOWN"),0);
- if(!folds.length||!all.length){status.textContent="Not enough qualifying trades for walk-forward testing. Try a longer history.";return;}
- const selected=folds.map(f=>"Fold "+f.fold+": score "+f.threshold+", hold "+f.hold+" candles").join(" · ");
- document.getElementById("optimizerThreshold").textContent="Walk-forward";
- document.getElementById("optimizerHold").textContent=folds.length+" test folds";
- document.getElementById("optimizerTrades").textContent=String(all.length);
- document.getElementById("optimizerWin").textContent=summary.winRate.toFixed(1)+"%";
- document.getElementById("optimizerNet").textContent=(summary.net>=0?"+":"")+summary.net.toFixed(2)+" bps";
- document.getElementById("optimizerDD").textContent=summary.drawdown.toFixed(2)+" bps";
- const sideRows=[["UP",up],["DOWN",down]].map(([side,stats])=>"<tr><td>"+side+"</td><td>"+stats.trades.length+"</td><td>"+(stats.trades.length?stats.winRate.toFixed(1)+"%":"N/A")+"</td><td>"+stats.net.toFixed(2)+"</td><td>"+stats.avg.toFixed(2)+"</td></tr>");
- document.getElementById("optimizerSides").innerHTML=sideRows.join("");
+ if(!summaries.length){status.textContent="Not enough qualifying trades for walk-forward testing. Try a longer history.";return;}
+ summaries.sort((a,b)=>b.stats.net-a.stats.net);
+ const best=summaries[0],stats=best.stats;
+ document.getElementById("optimizerThreshold").textContent=best.mode+" · "+best.friction+" bps";
+ document.getElementById("optimizerHold").textContent=best.foldResults.map(f=>f.hold+" candles").join(" / ");
+ document.getElementById("optimizerTrades").textContent=String(stats.trades.length);
+ document.getElementById("optimizerWin").textContent=stats.winRate.toFixed(1)+"%";
+ document.getElementById("optimizerNet").textContent=(stats.net>=0?"+":"")+stats.net.toFixed(2)+" bps";
+ document.getElementById("optimizerDD").textContent=stats.drawdown.toFixed(2)+" bps";
+ const rows=summaries.map(x=>{
+  const label=x.mode==="BOTH"?"UP + DOWN":x.mode;
+  return "<tr><td>"+label+"</td><td>"+x.friction+"</td><td>"+x.stats.trades.length+"</td><td>"+x.stats.winRate.toFixed(1)+"%</td><td>"+(x.stats.net>=0?"+":"")+x.stats.net.toFixed(2)+"</td><td>"+x.stats.drawdown.toFixed(2)+"</td><td>"+x.stats.avg.toFixed(2)+"</td></tr>";
+ });
+ document.getElementById("optimizerSides").innerHTML=rows.join("");
+ const chosen=best.foldResults.map(f=>"Fold "+f.fold+": score "+f.threshold+", hold "+f.hold+" candles").join(" · ");
  const notes=[];
- notes.push("WALK-FORWARD: settings are selected only on older data, then tested on the next untouched chronological segment. Three expanding folds are attempted.");
- notes.push("Chosen settings by fold: "+selected+". Minimum 20 non-overlapping training trades per candidate.");
- notes.push("ONE POSITION AT A TIME: after entering, the simulator waits until the selected holding period ends before considering another signal. Trades do not overlap.");
- notes.push("Entry is next candle OPEN; exit is the CLOSE after "+ "the chosen number of 15-minute candles. Directional return is measured in BTC basis points.");
- notes.push("Estimated round-trip friction: "+friction.toFixed(1)+" bps deducted per completed trade. This is an assumption, not a verified Kalshi fee/spread.");
- notes.push("Out-of-sample combined trades: "+all.length+" · UP: "+up.trades.length+" · DOWN: "+down.trades.length+". Net and drawdown are calculated on the sequential non-overlapping out-of-sample trade series.");
- notes.push("This remains a BTC directional proxy, not Kalshi contract P&L. It excludes contract pricing, fills, fees specific to Kalshi, and order execution.");
+ notes.push("WALK-FORWARD: each direction/friction combination chooses settings on older data, then tests on the next untouched chronological segment. Three folds are attempted.");
+ notes.push("Best combined test result: "+best.mode+" at "+best.friction+" bps assumed round-trip friction. Per-fold settings: "+chosen+".");
+ notes.push("All 12 comparisons are separate: BOTH, UP-only, DOWN-only × 4, 8, 12 and 20 bps.");
+ notes.push("ONE POSITION AT A TIME within each simulated strategy. Entry is next candle OPEN; exit is CLOSE after the chosen 1, 3 or 5 completed 15-minute candles.");
+ notes.push("Each fold requires at least 20 non-overlapping training trades for a candidate setting. The test period is never used to choose that fold's settings.");
+ notes.push("Rankings are by total out-of-sample net BTC basis points, not risk-adjusted return. Check maximum drawdown, average trade and positive folds before interpreting the top row.");
+ notes.push("Friction is a scenario assumption, not a verified Kalshi fee, spread or fill cost. These remain BTC directional proxy results, not Kalshi contract P&L.");
  document.getElementById("optimizerNotes").textContent=notes.join("\n");
- status.textContent="Walk-forward complete · "+folds.length+" folds · no overlapping positions.";
+ status.textContent="Comparison complete · "+summaries.length+" scenarios · 3 chronological folds · no overlapping positions.";
 }
 function runBacktest(){
  let tested=0,correct=0;
