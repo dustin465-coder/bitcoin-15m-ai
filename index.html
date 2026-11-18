@@ -381,7 +381,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
    <div class="paper-stat"><span class="small">Open positions</span><strong id="kalshiLifePositionCount">--</strong></div>
    <div class="paper-stat"><span class="small">Recent orders</span><strong id="kalshiLifeOrderCount">--</strong></div>
    <div class="paper-stat"><span class="small">Recent fills</span><strong id="kalshiLifeFillCount">--</strong></div>
-   <div class="paper-stat"><span class="small">DEMO equity drawdown</span><strong id="kalshiLifeDrawdown">--</strong></div>
+   <div class="paper-stat"><span class="small">Detailed risk audit</span><strong id="kalshiLifeDrawdown">Manual</strong></div>
   </div>
   <div class="small" id="kalshiLifePosition" style="margin-top:9px;white-space:pre-wrap">Waiting for a DEMO connection.</div>
   <div class="small" id="kalshiLifeLatest" style="margin-top:8px;white-space:pre-wrap">No lifecycle snapshot yet.</div>
@@ -1835,11 +1835,11 @@ async function kalshiUpdateLifecycle(){
  try{
   const r=await kalshiApi("lifecycle");
   if(r.environment!=="DEMO"||r.readOnly!==true||r.orderSubmission!==false)throw new Error("Server did not confirm a read-only DEMO snapshot.");
-  const positions=r.positions||[],orders=r.orders||[],fills=r.fills||[],risk=r.risk||{};
+  const positions=r.positions||[],orders=r.orders||[],fills=r.fills||[];
   document.getElementById("kalshiLifePositionCount").textContent=String(positions.length);
   document.getElementById("kalshiLifeOrderCount").textContent=String(orders.length);
   document.getElementById("kalshiLifeFillCount").textContent=String(fills.length);
-  document.getElementById("kalshiLifeDrawdown").textContent=kalshiMoney(risk.balanceDrawdown);
+  document.getElementById("kalshiLifeDrawdown").textContent="Manual";
   const posLines=positions.map(p=>{
    const qty=kalshiLifeValue(p,["position_fp","position","quantity"]);
    const ticker=kalshiLifeValue(p,["ticker"]);
@@ -1991,12 +1991,9 @@ setupKalshiLifecycle();
 setupKalshiAutoPreview();
 // Lower-frequency polling to avoid Kalshi HTTP 429 rate limits.
 setInterval(()=>{if(document.getElementById("kalshiConnectionState")?.textContent==="DEMO CONNECTED"&&!document.hidden)kalshiLoadMarkets();},60000);
-// Read-only preflight is less frequent; manual button remains available.
-setInterval(()=>{if(document.getElementById("kalshiConnectionState")?.textContent==="DEMO CONNECTED"&&!document.hidden)kalshiRunPreflight();},180000);
-// Lifecycle snapshot includes risk, positions, orders and fills in one server request.
-setInterval(()=>{if(document.getElementById("kalshiConnectionState")?.textContent==="DEMO CONNECTED"&&!document.hidden)kalshiUpdateLifecycle();},60000);
-// Keep the separate risk text updated less often; the lifecycle panel also shows drawdown.
-setInterval(()=>{if(document.getElementById("kalshiConnectionState")?.textContent==="DEMO CONNECTED"&&!document.hidden)kalshiLoadRiskStatus();},60000);
+// Full preflight and detailed risk audit are manual-only to avoid repeated API bursts.
+ // Lightweight lifecycle monitor reads positions, orders and fills every two minutes.
+setInterval(()=>{if(document.getElementById("kalshiConnectionState")?.textContent==="DEMO CONNECTED"&&!document.hidden)kalshiUpdateLifecycle();},120000);
 // One decision-monitor poller only (the button triggers an immediate first check).
 setInterval(()=>{if(!document.hidden)updateKalshiAutoPreview();},15000);
 setInterval(()=>{if(document.getElementById("kalshiMarket").value&&!document.hidden)kalshiLoadLiveMarket();},10000);
