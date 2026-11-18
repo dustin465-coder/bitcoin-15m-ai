@@ -1879,7 +1879,7 @@ function processPaperBot(action){
   return;
  }
  const buySide=action==="BUY UP"?"UP":action==="BUY DOWN"?"DOWN":action==="HOLD UP"?"UP":action==="HOLD DOWN"?"DOWN":null;
- if(!buySide)return;
+ if(!buySide){$("paperBotMessage").textContent="Paper bot is running. Waiting for a BUY/HOLD signal; current dashboard signal: "+(action||"not available")+". No real orders are sent.";return;}
  if(!kalshiMarketQuotes||Date.now()-kalshiMarketQuotes.fetchedAt>PAPER_QUOTE_MAX_AGE_MS||!kalshiMarketQuotes.ticker){
   $("paperBotMessage").textContent="Dashboard says "+action+", but the live Kalshi market quote is missing or stale. No paper position opened; waiting for a fresh quote.";return;
  }
@@ -2086,8 +2086,10 @@ async function kalshiLoadLiveMarket(){
   buy.disabled=!live||yesAsk===null;sell.disabled=!live||yesBid===null;
   // Apply the dashboard's currently displayed action as soon as a fresh quote arrives.
   // This prevents a valid signal being missed between the signal and quote polling cycles.
-  if(quoteOk&&paperBot&&paperBot.enabled){
+  if(live&&paperBot&&paperBot.enabled){
    const currentAction=document.getElementById("signal")?.textContent?.trim()||"";
+   // Run the decision handler on every successful live market response, even
+   // when one/both asks are absent, so it can report the exact missing side.
    processPaperBot(currentAction);
   }
   if(paperBot&&paperBot.position)await kalshiResolvePaperPosition();
