@@ -1723,7 +1723,7 @@ async function kalshiLoadPositions(){
  try{
   const data=await kalshiApi("positions");
   const rows=data.market_positions||data.positions||[];
-  document.getElementById("kalshiPositions").textContent="DEMO positions ("+rows.length+"):\n"+(rows.length?rows.map(p=>(p.ticker||"Market")+" · position "+(p.position_fp??p.position??"--")+" · market value "+(p.market_value_dollars??p.market_value??"--")).join("\\n"):"No open positions.");
+  document.getElementById("kalshiPositions").textContent="DEMO positions ("+rows.length+"):\n"+(rows.length?rows.map(p=>(p.ticker||"Market")+" · position "+(p.position_fp??p.position??"--")+" · market value "+(p.market_value_dollars??p.market_value??"--")).join("\n"):"No open positions.");
  }catch(e){document.getElementById("kalshiPositions").textContent="Positions: "+e.message;}
 }
 async function kalshiLoadFills(){
@@ -1741,7 +1741,7 @@ async function kalshiLoadOrders(){
  try{
   const data=await kalshiApi("orders");
   const rows=data.orders||[];
-  el.textContent="DEMO orders ("+rows.length+") · checked "+new Date().toLocaleTimeString()+"\\n"+(rows.length?rows.slice(0,12).map(o=>(o.ticker||"Market")+" · "+(o.side||"")+" · "+(o.count||o.remaining_count||"--")+" · "+(o.status||"")).join("\\n"):"No orders returned.");
+  el.textContent="DEMO orders ("+rows.length+") · checked "+new Date().toLocaleTimeString()+"\\n"+(rows.length?rows.slice(0,12).map(o=>(o.ticker||"Market")+" · "+(o.side||"")+" · "+(o.count||o.remaining_count||"--")+" · "+(o.status||"")).join("\n"):"No orders returned.");
  }catch(e){el.textContent="DEMO orders · failed "+new Date().toLocaleTimeString()+"\\n"+e.message;}
 }
 let kalshiAutoPreviewEnabled=false;
@@ -2017,7 +2017,7 @@ function kalshiComputePerformance(ledger){
  notes.push("BUY/HOLD hit rates measure directional settlement matches, not trade profitability. HOLD is the dashboard's wait/no-entry signal.");
  notes.push("Maximum drawdown is calculated from the sequence of realized closed-trade net P&L only; it is not account-wide drawdown and excludes open positions.");
  notes.push("Fee ratio compares fees on matched closed contracts with gross winning trade profit. N/A means there is no positive gross profit denominator.");
- document.getElementById("kalshiPerformanceNotes").textContent=notes.join("\\n");
+ document.getElementById("kalshiPerformanceNotes").textContent=notes.join("\n");
  const groups=[
   ["BUY",buy],["HOLD / WAIT",hold],["UP direction",up],["DOWN direction",down]
  ];
@@ -2040,7 +2040,7 @@ function kalshiComputePerformance(ledger){
  confNotes.push("A 95% Wilson interval describes sampling uncertainty for each observed hit rate. Small samples produce wide intervals; 100 observations is a tracking target, not proof of a reliable edge.");
  confNotes.push("Time windows use the computer's local time zone. These groupings are descriptive and can be misleading until each has a meaningful sample.");
  confNotes.push("The existing tracker records at most one signal per market, signal type and direction. Results are historical directional matches only.");
- document.getElementById("kalshiConfidenceNote").textContent=confNotes.join("\\n");
+ document.getElementById("kalshiConfidenceNote").textContent=confNotes.join("\n");
  document.getElementById("kalshiPerformanceStatus").textContent="Updated "+new Date().toLocaleTimeString()+" · "+(ledger.ledgerValid?"ledger checks passed":"provisional data");
 }
 function setupKalshiLifecycle(){
