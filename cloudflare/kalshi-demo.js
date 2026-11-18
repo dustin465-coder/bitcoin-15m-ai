@@ -341,6 +341,32 @@ export async function handleKalshiRequest(request, env, url) {
       }, 200, allowedOrigin);
     }
 
+    if (url.pathname === "/kalshi/lifecycle" && request.method === "GET") {
+      // Read-only snapshot for the dashboard lifecycle monitor. Never submits or changes orders.
+      const [positions, orders, fills, risk] = await Promise.all([
+        signedKalshiRequest(env, "GET", "/portfolio/positions?limit=1000&count_filter=position"),
+        signedKalshiRequest(env, "GET", "/portfolio/orders?limit=100"),
+        signedKalshiRequest(env, "GET", "/portfolio/fills?limit=100"),
+        getRiskSnapshot(env),
+      ]);
+      const positionRows = (positions.market_positions || []).filter(p =>
+        Math.abs(Number(p.position_fp ?? p.position ?? 0)) > 0
+      );
+      const orderRows = orders.orders || [];
+      const fillRows = fills.fills || [];
+      return json({
+        environment:"DEMO",
+        readOnly:true,
+        orderSubmission:false,
+        checkedAt:new Date().toISOString(),
+        positions:positionRows,
+        orders:orderRows.slice(0,50),
+        fills:fillRows.slice(0,50),
+        risk,
+        note:"Read-only lifecycle snapshot. Open positions, order statuses and fills are reported from Kalshi DEMO. No order was sent, changed or canceled. This endpoint does not calculate realized trade P&L."
+      }, 200, allowedOrigin);
+    }
+
     if (url.pathname === "/kalshi/risk-status" && request.method === "GET") {
       const risk = await getRiskSnapshot(env);
       return json(risk, 200, allowedOrigin);
