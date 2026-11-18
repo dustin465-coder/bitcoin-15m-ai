@@ -1518,51 +1518,67 @@ function optimizerStats(rows,friction){
  const net=trades.reduce((n,t)=>n+t.netBps,0);
  return {trades,wins,winRate:trades.length?100*wins/trades.length:0,net,avg:trades.length?net/trades.length:0,drawdown:dd};
 }
+function optimizerSimulate(data,startIndex,endIndex,threshold,hold,friction){
+ const rows=[];
+ let i=Math.max(30,startIndex);
+ while(i+hold<endIndex){
+  const model=analyze(data.slice(0,i+1),null);
+  if(model&&Math.abs(model.score)>=threshold){
+   const entryIndex=i+1,exitIndex=i+hold;
+   const entry=data[entryIndex].open,exit=data[exitIndex].close;
+   const grossBps=(model.score>0?(exit-entry):(entry-exit))/entry*10000;
+   rows.push({time:data[i].time,entryTime:data[entryIndex].time,exitTime:data[exitIndex].time,direction:model.score>0?"UP":"DOWN",score:model.score,entry,exit,grossBps,netBps:grossBps-friction,hold});
+   i+=hold;
+  }else i++;
+ }
+ return rows;
+}
 function runStrategyOptimizer(){
  const status=document.getElementById("optimizerStatus");
- if(replayCandlesData.length<300){status.textContent="Run the historical replay first; at least 300 candles are needed.";return;}
+ const data=replayCandlesData;
+ if(data.length<500){status.textContent="Run the historical replay first; at least 500 candles are needed.";return;}
  const friction=Number(document.getElementById("optimizerFriction").value);
  if(!Number.isFinite(friction)||friction<0||friction>100){status.textContent="Enter friction from 0 to 100 basis points.";return;}
- const data=replayCandlesData,split=Math.floor(data.length*0.70);
- const thresholds=[10,15,20,25,30],holds=[1,3,5],results=[];
- for(const threshold of thresholds)for(const hold of holds){
-  const rows=[];
-  for(let i=30;i+hold<data.length;i++){
-   const model=analyze(data.slice(0,i+1),null);
-   if(!model||Math.abs(model.score)<threshold)continue;
-   const entry=data[i+1].open,exit=data[i+hold].close;
-   const grossBps=(model.score>0?(exit-entry):(entry-exit))/entry*10000;
-   rows.push({time:data[i].time,direction:model.score>0?"UP":"DOWN",grossBps});
+ const thresholds=[10,15,20,25,30],holds=[1,3,5],folds=[];
+ const boundaries=[0.50,0.65,0.80,1.00].map(p=>Math.floor(data.length*p));
+ for(let f=0;f<3;f++){
+  const trainEnd=boundaries[f+1],testStart=trainEnd,testEnd=boundaries[f+2];
+  if(testEnd-testStart<40)continue;
+  const candidates=[];
+  for(const threshold of thresholds)for(const hold of holds){
+   const train=optimizerStats(optimizerSimulate(data,30,trainEnd,threshold,hold,friction),0);
+   if(train.trades.length>=20)candidates.push({threshold,hold,train});
   }
-  const train=optimizerStats(rows.filter(t=>t.time<data[split].time),friction);
-  const test=optimizerStats(rows.filter(t=>t.time>=data[split].time),friction);
-  results.push({threshold,hold,train,test});
+  if(!candidates.length)continue;
+  candidates.sort((a,b)=>b.train.avg-a.train.avg);
+  const chosen=candidates[0];
+  const test=optimizerSimulate(data,testStart,testEnd,chosen.threshold,chosen.hold,friction);
+  folds.push({fold:f+1,trainStart:data[30].time,trainEnd:data[trainEnd-1].time,testStart:data[testStart].time,testEnd:data[testEnd-1].time,threshold:chosen.threshold,hold:chosen.hold,trainTrades:chosen.train.trades.length,test});
  }
- const eligible=results.filter(r=>r.train.trades.length>=20);
- if(!eligible.length){status.textContent="Not enough training trades for a fair comparison.";return;}
- eligible.sort((a,b)=>b.train.avg-a.train.avg);
- const chosen=eligible[0],test=chosen.test;
- const sideRows=["UP","DOWN"].map(side=>{
-  const subset=test.trades.filter(t=>t.direction===side);
-  const stats=optimizerStats(subset,friction);
-  return "<tr><td>"+side+"</td><td>"+subset.length+"</td><td>"+(subset.length?stats.winRate.toFixed(1)+"%":"N/A")+"</td><td>"+stats.net.toFixed(2)+"</td><td>"+stats.avg.toFixed(2)+"</td></tr>";
- });
- document.getElementById("optimizerThreshold").textContent=String(chosen.threshold);
- document.getElementById("optimizerHold").textContent=chosen.hold+" candles";
- document.getElementById("optimizerTrades").textContent=String(test.trades.length);
- document.getElementById("optimizerWin").textContent=test.trades.length?test.winRate.toFixed(1)+"%":"No test trades";
- document.getElementById("optimizerNet").textContent=test.trades.length?(test.net>=0?"+":"")+test.net.toFixed(2)+" bps":"N/A";
- document.getElementById("optimizerDD").textContent=test.trades.length?test.drawdown.toFixed(2)+" bps":"N/A";
+ const all=folds.flatMap(f=>f.test).sort((a,b)=>a.entryTime-b.entryTime);
+ const summary=optimizerStats(all,0);
+ const up=optimizerStats(all.filter(t=>t.direction==="UP"),0);
+ const down=optimizerStats(all.filter(t=>t.direction==="DOWN"),0);
+ if(!folds.length||!all.length){status.textContent="Not enough qualifying trades for walk-forward testing. Try a longer history.";return;}
+ const selected=folds.map(f=>"Fold "+f.fold+": score "+f.threshold+", hold "+f.hold+" candles").join(" · ");
+ document.getElementById("optimizerThreshold").textContent="Walk-forward";
+ document.getElementById("optimizerHold").textContent=folds.length+" test folds";
+ document.getElementById("optimizerTrades").textContent=String(all.length);
+ document.getElementById("optimizerWin").textContent=summary.winRate.toFixed(1)+"%";
+ document.getElementById("optimizerNet").textContent=(summary.net>=0?"+":"")+summary.net.toFixed(2)+" bps";
+ document.getElementById("optimizerDD").textContent=summary.drawdown.toFixed(2)+" bps";
+ const sideRows=[["UP",up],["DOWN",down]].map(([side,stats])=>"<tr><td>"+side+"</td><td>"+stats.trades.length+"</td><td>"+(stats.trades.length?stats.winRate.toFixed(1)+"%":"N/A")+"</td><td>"+stats.net.toFixed(2)+"</td><td>"+stats.avg.toFixed(2)+"</td></tr>");
  document.getElementById("optimizerSides").innerHTML=sideRows.join("");
  const notes=[];
- notes.push("Chronological split: first 70% used to choose settings; final 30% is the out-of-sample test.");
- notes.push("Selection rule: highest average net BTC movement per trade in training, with at least 20 training trades.");
- notes.push("Estimated friction: "+friction.toFixed(1)+" bps per completed round trip. This is an editable assumption, not a measured Kalshi fee or spread.");
- notes.push("Net results are directional BTC price movement after the friction assumption, not Kalshi contract P&L, and do not include actual fill probability.");
- notes.push("All "+results.length+" threshold/hold combinations are tested. Repeatedly tuning against the same test period can overfit it; use a new future period for confirmation.");
- if(!test.trades.length)notes.push("No qualifying trades fell in the test period for the selected settings. Do not interpret missing results as success.");
+ notes.push("WALK-FORWARD: settings are selected only on older data, then tested on the next untouched chronological segment. Three expanding folds are attempted.");
+ notes.push("Chosen settings by fold: "+selected+". Minimum 20 non-overlapping training trades per candidate.");
+ notes.push("ONE POSITION AT A TIME: after entering, the simulator waits until the selected holding period ends before considering another signal. Trades do not overlap.");
+ notes.push("Entry is next candle OPEN; exit is the CLOSE after "+ "the chosen number of 15-minute candles. Directional return is measured in BTC basis points.");
+ notes.push("Estimated round-trip friction: "+friction.toFixed(1)+" bps deducted per completed trade. This is an assumption, not a verified Kalshi fee/spread.");
+ notes.push("Out-of-sample combined trades: "+all.length+" · UP: "+up.trades.length+" · DOWN: "+down.trades.length+". Net and drawdown are calculated on the sequential non-overlapping out-of-sample trade series.");
+ notes.push("This remains a BTC directional proxy, not Kalshi contract P&L. It excludes contract pricing, fills, fees specific to Kalshi, and order execution.");
  document.getElementById("optimizerNotes").textContent=notes.join("\n");
- status.textContent="Optimization complete · selected on training data · tested on later unseen candles.";
+ status.textContent="Walk-forward complete · "+folds.length+" folds · no overlapping positions.";
 }
 function runBacktest(){
  let tested=0,correct=0;
