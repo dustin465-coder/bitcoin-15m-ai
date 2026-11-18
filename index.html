@@ -412,6 +412,27 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
   </div>
  </div>
  </div>
+ <div class="paper-stat" id="kalshiPerformanceCard" style="margin-top:12px">
+  <strong>DEMO STRATEGY PERFORMANCE REPORT</strong>
+  <div class="small" style="margin-top:6px">Built from actual closed DEMO fills and saved model signal outcomes. This report does not estimate future results or include hypothetical paper trades.</div>
+  <div class="paper-controls" style="margin-top:8px">
+   <button id="kalshiPerformanceRefresh" type="button" class="paper-off">Update performance report</button>
+   <span class="small" id="kalshiPerformanceStatus">Waiting for a ledger refresh.</span>
+  </div>
+  <div class="paper-grid" style="margin-top:9px">
+   <div class="paper-stat"><span class="small">Actual trade win rate</span><strong id="kalshiPerfWinRate">--</strong></div>
+   <div class="paper-stat"><span class="small">Average net / trade</span><strong id="kalshiPerfAverage">--</strong></div>
+   <div class="paper-stat"><span class="small">Fees / gross profits</span><strong id="kalshiPerfFeeRatio">--</strong></div>
+   <div class="paper-stat"><span class="small">Maximum realized drawdown</span><strong id="kalshiPerfDrawdown">--</strong></div>
+  </div>
+  <div class="paper-grid" style="margin-top:8px">
+   <div class="paper-stat"><span class="small">BUY signal hit rate</span><strong id="kalshiPerfBuyHit">--</strong></div>
+   <div class="paper-stat"><span class="small">HOLD / wait hit rate</span><strong id="kalshiPerfHoldHit">--</strong></div>
+   <div class="paper-stat"><span class="small">Actual closed trades</span><strong id="kalshiPerfTrades">0</strong></div>
+   <div class="paper-stat"><span class="small">Resolved BUY / HOLD signals</span><strong id="kalshiPerfSignals">0 / 0</strong></div>
+  </div>
+  <div class="small" id="kalshiPerformanceNotes" style="margin-top:9px;white-space:pre-wrap">No performance calculation yet.</div>
+ </div>
  <div class="small yellow" style="margin-top:12px">Safety limits: DEMO host is hard-coded in the Worker; exactly 1 contract per order; limit price must be $0.01–$0.99; each order requires a confirmation prompt. The existing paper bot does not send Kalshi orders automatically yet.</div>
 </section>
 
@@ -1935,13 +1956,46 @@ async function kalshiLoadTradeLedger(){
   const rows=(r.closedTrades||[]).slice(0,50).map(t=>"<tr><td>"+t.ticker+" / "+t.direction+"</td><td>"+t.contracts+"</td><td>"+kalshiLedgerMoney(t.entryPrice)+"<br><small>"+(t.entryTime||"")+"</small></td><td>"+kalshiLedgerMoney(t.exitPrice)+"<br><small>"+(t.exitTime||"")+"</small></td><td>"+kalshiLedgerMoney(t.fees)+"</td><td>"+kalshiLedgerMoney(t.netPnl)+"</td><td>"+kalshiFindModelSignal(t)+"</td></tr>");
   document.getElementById("kalshiLedgerRows").innerHTML=rows.join("")||'<tr><td colspan="7">No completed buy/sell pairs found in the returned fill history.</td></tr>';
   status.textContent="Loaded "+new Date(r.checkedAt||Date.now()).toLocaleTimeString()+" · "+(r.ledgerValid?"verified fill matching":"provisional ledger");
+  kalshiComputePerformance(r);
  }catch(e){status.textContent="Ledger unavailable: "+e.message;}
  finally{kalshiLedgerInFlight=false;}
+}
+function kalshiPercent(n,d){return d?((100*n/d).toFixed(1)+"%"):"N/A";}
+function kalshiComputePerformance(ledger){
+ const trades=(ledger.closedTrades||[]).slice().sort((a,b)=>Date.parse(a.exitTime||0)-Date.parse(b.exitTime||0));
+ const wins=trades.filter(t=>Number(t.netPnl)>0).length;
+ const grossProfit=trades.reduce((n,t)=>n+Math.max(0,Number(t.grossPnl)||0),0);
+ const fees=trades.reduce((n,t)=>n+(Number(t.fees)||0),0);
+ const net=trades.reduce((n,t)=>n+(Number(t.netPnl)||0),0);
+ const avg=trades.length?net/trades.length:0;
+ let equity=0,peak=0,maxDrawdown=0;
+ for(const t of trades){equity+=Number(t.netPnl)||0;peak=Math.max(peak,equity);maxDrawdown=Math.max(maxDrawdown,peak-equity);}
+ const events=JSON.parse(localStorage.getItem("kalshiSignalEventsV1")||"[]");
+ const scored=type=>events.filter(e=>e.type===type&&(e.outcome==="MATCH"||e.outcome==="MISS"));
+ const buy=scored("BUY"),hold=scored("HOLD");
+ document.getElementById("kalshiPerfWinRate").textContent=trades.length?kalshiPercent(wins,trades.length):"No trades";
+ document.getElementById("kalshiPerfAverage").textContent=trades.length?kalshiLedgerMoney(avg):"No trades";
+ document.getElementById("kalshiPerfFeeRatio").textContent=grossProfit>0?kalshiPercent(fees,grossProfit):"N/A";
+ document.getElementById("kalshiPerfDrawdown").textContent=trades.length?kalshiLedgerMoney(maxDrawdown):"No trades";
+ document.getElementById("kalshiPerfBuyHit").textContent=buy.length?kalshiPercent(buy.filter(e=>e.outcome==="MATCH").length,buy.length):"No resolved signals";
+ document.getElementById("kalshiPerfHoldHit").textContent=hold.length?kalshiPercent(hold.filter(e=>e.outcome==="MATCH").length,hold.length):"No resolved signals";
+ document.getElementById("kalshiPerfTrades").textContent=String(trades.length);
+ document.getElementById("kalshiPerfSignals").textContent=buy.length+" / "+hold.length;
+ const notes=[];
+ if(!ledger.ledgerValid)notes.push("Actual trade metrics are provisional because the fill ledger did not pass every completeness check.");
+ if(!trades.length)notes.push("No completed DEMO trades exist yet, so actual win rate, average trade, fee ratio and drawdown cannot be measured.");
+ if(!buy.length&&!hold.length)notes.push("No resolved BUY or HOLD signals are available yet. Signal hit rates will appear after markets settle.");
+ notes.push("BUY/HOLD hit rates measure directional settlement matches, not trade profitability. HOLD is the dashboard's wait/no-entry signal.");
+ notes.push("Maximum drawdown is calculated from the sequence of realized closed-trade net P&L only; it is not account-wide drawdown and excludes open positions.");
+ notes.push("Fee ratio compares fees on matched closed contracts with gross winning trade profit. N/A means there is no positive gross profit denominator.");
+ document.getElementById("kalshiPerformanceNotes").textContent=notes.join("\n");
+ document.getElementById("kalshiPerformanceStatus").textContent="Updated "+new Date().toLocaleTimeString()+" · "+(ledger.ledgerValid?"ledger checks passed":"provisional data");
 }
 function setupKalshiLifecycle(){
  kalshiRenderLifecycleHistory();
  document.getElementById("kalshiLifeRefresh")?.addEventListener("click",kalshiUpdateLifecycle);
  document.getElementById("kalshiLedgerRefresh")?.addEventListener("click",kalshiLoadTradeLedger);
+ document.getElementById("kalshiPerformanceRefresh")?.addEventListener("click",kalshiLoadTradeLedger);
 }
 let kalshiPreflightInFlight=false;
 async function kalshiRunPreflight(){
