@@ -388,8 +388,8 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
 
 
 <section class="card" id="kalshiDemoCard">
- <h2>KALSHI DEMO API CONNECTION</h2>
- <div class="small">Connect this dashboard to Kalshi's separate demo exchange. Your Kalshi private key stays in Cloudflare Worker secrets; only a dashboard access token is entered here. This section can submit a one-contract DEMO limit order after you confirm it.</div>
+ <h2>STAGE 2 · KALSHI DEMO ACCOUNT (NOT USED FOR PAPER TRADING)</h2>
+ <div class="small">This is reserved for the later DEMO execution stage. The paper bot above reads live Kalshi PRODUCTION market data directly and does not need a DEMO account connection. Do not submit test orders while evaluating paper results.</div>
  <div class="grid" style="margin-top:14px">
   <label class="small">Cloudflare Worker URL
    <input id="kalshiWorkerUrl" type="url" placeholder="https://your-worker.workers.dev" autocomplete="url" style="display:block;width:100%;margin-top:6px;padding:11px;border-radius:8px;background:#101b22;border:1px solid #43545b;color:#edf3f4">
@@ -421,7 +421,7 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
   </label>
  </div>
  <div class="paper-stat" style="margin-top:12px">
-  <strong>LIVE KALSHI PRODUCTION MARKET PRICES</strong>
+  <strong>LIVE KALSHI PRODUCTION MARKET PRICES · PAPER BOT FEED</strong>
   <div class="grid" style="margin-top:8px">
    <div><span class="small">UP · best ask to buy</span><strong id="kalshiLiveUp" style="display:block;font-size:22px">--</strong><span class="small" id="kalshiLiveUpBid">Bid: --</span></div>
    <div><span class="small">DOWN · best ask to buy</span><strong id="kalshiLiveDown" style="display:block;font-size:22px">--</strong><span class="small" id="kalshiLiveDownBid">Bid: --</span></div>
@@ -2492,6 +2492,7 @@ document.getElementById("replayPrev").addEventListener("click",()=>replayRender(
 document.getElementById("replayNext").addEventListener("click",()=>replayRender(Number(document.getElementById("replaySlider").value)+1));
 setupProspectiveTracker();
 setupKalshiDemo();
+kalshiLoadMarkets(); // Public production market data powers paper mode; no DEMO login required.
 setupKalshiLifecycle();
 setupKalshiAutoPreview();
 // Lower-frequency polling to avoid Kalshi HTTP 429 rate limits.
