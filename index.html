@@ -1274,9 +1274,14 @@ function updateDecision(){
      writeSignalState(state);
      action="EXIT WARNING "+state.side;
      reason=state.exitWarningReason+" Consider reducing risk or preparing to exit. The dashboard does not know whether you entered; CASH OUT will appear if the stronger exit conditions are met.";
+    }else if(now-(state.suggestedAt||0)<15000){
+     // Keep a fresh BUY visible long enough for the user and paper executor to see it.
+     // The next decision cycle transitions to HOLD if the setup remains valid.
+     action="BUY "+state.side;
+     reason="Fresh BUY signal: the entry conditions have qualified. This signal stays visible for up to 15 seconds before changing to HOLD if the setup remains valid.";
     }else{
      action="HOLD "+state.side;
-     reason="The model still favors the earlier BUY direction. Continue holding only if you entered it; the dashboard does not know whether you bought.";
+     reason="The earlier BUY signal is now in its holding phase. Continue holding only if you entered it; the dashboard does not know whether you bought.";
     }
    }else{
     const cooldownMs=15000;
