@@ -383,6 +383,10 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
    <div class="paper-stat"><span class="small">Recent fills</span><strong id="kalshiLifeFillCount">--</strong></div>
    <div class="paper-stat"><span class="small">Detailed risk audit</span><strong id="kalshiLifeDrawdown">Manual</strong></div>
   </div>
+  <div class="paper-controls" style="margin-top:8px">
+   <button id="kalshiLifeRefresh" type="button" class="paper-off">Refresh lifecycle now</button>
+   <span class="small" id="kalshiLifeStatus">Waiting for first snapshot.</span>
+  </div>
   <div class="small" id="kalshiLifePosition" style="margin-top:9px;white-space:pre-wrap">Waiting for a DEMO connection.</div>
   <div class="small" id="kalshiLifeLatest" style="margin-top:8px;white-space:pre-wrap">No lifecycle snapshot yet.</div>
   <div class="small" style="margin-top:8px"><strong>RECENT LIFECYCLE EVENTS</strong></div>
@@ -1579,6 +1583,7 @@ async function kalshiConnect(){
   kalshiSetMessage("Authenticated successfully. This connection is to Kalshi DEMO only.");
   await kalshiLoadMarkets();
   await Promise.all([kalshiLoadPositions(),kalshiLoadOrders()]);
+  await kalshiUpdateLifecycle();
  }catch(e){
   document.getElementById("kalshiConnectionState").textContent="NOT CONNECTED";
   kalshiSetMessage(e.message,true);
@@ -1830,8 +1835,14 @@ function kalshiRenderLifecycleHistory(){
  el.textContent=kalshiLifecycleEvents.slice(0,25).map(e=>new Date(e.time).toLocaleString()+" · "+e.message).join("\n")||"No events recorded yet.";
 }
 async function kalshiUpdateLifecycle(){
- if(kalshiLifecycleInFlight||document.getElementById("kalshiConnectionState")?.textContent!=="DEMO CONNECTED")return;
+ if(kalshiLifecycleInFlight)return;
+ if(document.getElementById("kalshiConnectionState")?.textContent!=="DEMO CONNECTED"){
+  const status=document.getElementById("kalshiLifeStatus");if(status)status.textContent="Connect to Kalshi DEMO first.";
+  return;
+ }
  kalshiLifecycleInFlight=true;
+ const statusEl=document.getElementById("kalshiLifeStatus");
+ if(statusEl)statusEl.textContent="Checking DEMO positions, orders and fills…";
  try{
   const r=await kalshiApi("lifecycle");
   if(r.environment!=="DEMO"||r.readOnly!==true||r.orderSubmission!==false)throw new Error("Server did not confirm a read-only DEMO snapshot.");
@@ -1861,13 +1872,16 @@ async function kalshiUpdateLifecycle(){
    kalshiLifeAddEvent("fill|"+id,"FILL · "+kalshiLifeValue(f,["ticker"])+" · "+kalshiLifeValue(f,["side","action"])+" · "+kalshiLifeValue(f,["count_fp","count","fill_count"])+" contracts · "+id,f.created_time||f.ts||f.timestamp);
   }
   kalshiRenderLifecycleHistory();
+  if(statusEl)statusEl.textContent="Connected · last checked "+new Date(r.checkedAt||Date.now()).toLocaleTimeString();
  }catch(e){
+  if(statusEl)statusEl.textContent="Check failed";
   const el=document.getElementById("kalshiLifeLatest");
   if(el)el.textContent="Lifecycle check unavailable: "+e.message;
  }finally{kalshiLifecycleInFlight=false;}
 }
 function setupKalshiLifecycle(){
  kalshiRenderLifecycleHistory();
+ document.getElementById("kalshiLifeRefresh")?.addEventListener("click",kalshiUpdateLifecycle);
 }
 let kalshiPreflightInFlight=false;
 async function kalshiRunPreflight(){
