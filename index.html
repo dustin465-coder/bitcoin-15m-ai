@@ -1551,10 +1551,13 @@ const KALSHI_WORKER_KEY="kalshiDemoWorkerUrl";
 function kalshiWorkerBase(){return (document.getElementById("kalshiWorkerUrl").value||"").trim().replace(/\/+$/,"");}
 function kalshiToken(){return (document.getElementById("kalshiAccessToken").value||"").trim();}
 function kalshiEndpoint(path){const base=kalshiWorkerBase();if(!/^https:\/\//i.test(base))throw new Error("Enter your Cloudflare Worker URL starting with https://");return base+"/kalshi/"+path;}
+let kalshiRateLimitUntil=0;
 async function kalshiApi(path,options={}){
+ if(Date.now()<kalshiRateLimitUntil)throw new Error("Kalshi rate-limit cooldown active. The dashboard will retry after "+Math.ceil((kalshiRateLimitUntil-Date.now())/1000)+" seconds.");
  const token=kalshiToken();if(!token)throw new Error("Enter your dashboard access token.");
  const response=await fetch(kalshiEndpoint(path),{...options,cache:"no-store",headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json",...(options.headers||{})}});
  let data={};try{data=await response.json()}catch(e){}
+ if(response.status===429){kalshiRateLimitUntil=Date.now()+30000;throw new Error("Kalshi is rate-limiting requests (HTTP 429). Pausing dashboard requests for 30 seconds.");}
  if(!response.ok)throw new Error(data.error||("Worker request failed: "+response.status));
  return data;
 }
@@ -1752,7 +1755,7 @@ async function updateKalshiAutoPreview(){
  kalshiAutoPreviewInFlight=true;
  try{
   const get=id=>document.getElementById(id);
-  if(Date.now()-kalshiLastMarketRefresh>15000||!get("kalshiMarket").value){
+  if(Date.now()-kalshiLastMarketRefresh>60000||!get("kalshiMarket").value){
    await kalshiLoadMarkets();
   }
   const action=(get("signal")?.textContent||"NO TRADE").trim();
@@ -1918,7 +1921,7 @@ function setupKalshiAutoPreview(){
   document.getElementById("kalshiAutoPreviewState").textContent=kalshiAutoPreviewEnabled?"MONITOR RUNNING · NO ORDERS":"MONITOR OFF";
   if(kalshiAutoPreviewEnabled){
    updateKalshiAutoPreview();
-   kalshiAutoPreviewTimer=setInterval(updateKalshiAutoPreview,5000);
+
   }else if(kalshiAutoPreviewTimer){
    clearInterval(kalshiAutoPreviewTimer);
    kalshiAutoPreviewTimer=null;
@@ -1986,15 +1989,17 @@ function setupKalshiDemo(){
 setupKalshiDemo();
 setupKalshiLifecycle();
 setupKalshiAutoPreview();
-// Automatically refresh active BTC markets every 30 seconds while connected.
-setInterval(()=>{if(document.getElementById("kalshiConnectionState")?.textContent==="DEMO CONNECTED"&&!document.hidden)kalshiLoadMarkets();},30000);
-// Automatically rerun the read-only server preflight every 60 seconds. Never submits orders.
-setInterval(()=>{if(document.getElementById("kalshiConnectionState")?.textContent==="DEMO CONNECTED"&&!document.hidden)kalshiRunPreflight();},60000);
-setInterval(()=>{if(document.getElementById("kalshiConnectionState")?.textContent==="DEMO CONNECTED")kalshiLoadRiskStatus();},30000);
-// Read-only lifecycle polling: recent DEMO orders, fills and positions; never sends orders.
-setInterval(()=>{if(document.getElementById("kalshiConnectionState")?.textContent==="DEMO CONNECTED"&&!document.hidden)kalshiUpdateLifecycle();},10000);
-setInterval(updateKalshiAutoPreview,5000);
-setInterval(()=>{if(document.getElementById("kalshiMarket").value)kalshiLoadLiveMarket();},5000);
+// Lower-frequency polling to avoid Kalshi HTTP 429 rate limits.
+setInterval(()=>{if(document.getElementById("kalshiConnectionState")?.textContent==="DEMO CONNECTED"&&!document.hidden)kalshiLoadMarkets();},60000);
+// Read-only preflight is less frequent; manual button remains available.
+setInterval(()=>{if(document.getElementById("kalshiConnectionState")?.textContent==="DEMO CONNECTED"&&!document.hidden)kalshiRunPreflight();},180000);
+// Lifecycle snapshot includes risk, positions, orders and fills in one server request.
+setInterval(()=>{if(document.getElementById("kalshiConnectionState")?.textContent==="DEMO CONNECTED"&&!document.hidden)kalshiUpdateLifecycle();},60000);
+// Keep the separate risk text updated less often; the lifecycle panel also shows drawdown.
+setInterval(()=>{if(document.getElementById("kalshiConnectionState")?.textContent==="DEMO CONNECTED"&&!document.hidden)kalshiLoadRiskStatus();},60000);
+// One decision-monitor poller only (the button triggers an immediate first check).
+setInterval(()=>{if(!document.hidden)updateKalshiAutoPreview();},15000);
+setInterval(()=>{if(document.getElementById("kalshiMarket").value&&!document.hidden)kalshiLoadLiveMarket();},10000);
 </script>
 </body>
 </html>
