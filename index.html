@@ -392,6 +392,25 @@ footer{font-size:12px;color:#8fa3a8;line-height:1.6;margin:22px 0}
   <div class="small" style="margin-top:8px"><strong>RECENT LIFECYCLE EVENTS</strong></div>
   <div class="small" id="kalshiLifeHistory" style="margin-top:6px;white-space:pre-wrap;max-height:180px;overflow-y:auto;padding:8px 10px;border:1px solid #2b414a;border-radius:8px">No events recorded yet.</div>
   <div class="small" style="margin-top:7px">P&amp;L note: this monitor does not claim realized trade profit/loss. It shows Kalshi's account equity drawdown and raw order/fill activity; matching entries to exits and fees is not yet validated.</div>
+ <div class="paper-stat" id="kalshiLedgerCard" style="margin-top:12px">
+  <strong>ACTUAL DEMO TRADE P&amp;L LEDGER</strong>
+  <div class="small" style="margin-top:6px">Uses Kalshi-reported fills, matches buys and sells FIFO, and subtracts recorded fees. This is read-only and never submits orders.</div>
+  <div class="paper-controls" style="margin-top:8px">
+   <button id="kalshiLedgerRefresh" type="button" class="paper-off">Load trade P&amp;L</button>
+   <span class="small" id="kalshiLedgerStatus">Not loaded. Run manually to avoid extra API traffic.</span>
+  </div>
+  <div class="paper-grid" style="margin-top:9px">
+   <div class="paper-stat"><span class="small">Closed matched trades</span><strong id="kalshiLedgerCount">--</strong></div>
+   <div class="paper-stat"><span class="small">Realized gross P&amp;L</span><strong id="kalshiLedgerGross">--</strong></div>
+   <div class="paper-stat"><span class="small">Matched fees</span><strong id="kalshiLedgerFees">--</strong></div>
+   <div class="paper-stat"><span class="small">Realized net P&amp;L</span><strong id="kalshiLedgerNet">--</strong></div>
+  </div>
+  <div class="small" id="kalshiLedgerWarnings" style="margin-top:8px;white-space:pre-wrap">No ledger calculation yet.</div>
+  <div style="overflow-x:auto;margin-top:8px">
+   <table><thead><tr><th>Market / side</th><th>Contracts</th><th>Entry</th><th>Exit</th><th>Fees</th><th>Net P&amp;L</th><th>Model signal</th></tr></thead>
+   <tbody id="kalshiLedgerRows"><tr><td colspan="7">Load trade P&amp;L to retrieve actual fills.</td></tr></tbody></table>
+  </div>
+ </div>
  </div>
  <div class="small yellow" style="margin-top:12px">Safety limits: DEMO host is hard-coded in the Worker; exactly 1 contract per order; limit price must be $0.01–$0.99; each order requires a confirmation prompt. The existing paper bot does not send Kalshi orders automatically yet.</div>
 </section>
@@ -1879,9 +1898,48 @@ async function kalshiUpdateLifecycle(){
   if(el)el.textContent="Lifecycle check unavailable: "+e.message;
  }finally{kalshiLifecycleInFlight=false;}
 }
+let kalshiLedgerInFlight=false;
+function kalshiLedgerMoney(n){return (Number(n)<0?"-$":"$")+Math.abs(Number(n)||0).toFixed(2);}
+function kalshiFindModelSignal(trade){
+ const events=JSON.parse(localStorage.getItem("kalshiSignalEventsV1")||"[]");
+ const entry=events.filter(e=>e.ticker===trade.ticker&&e.side===trade.direction&&e.type==="BUY"&&Math.abs(Date.parse(e.time)-Date.parse(trade.entryTime||0))<15*60*1000);
+ const exit=events.filter(e=>e.ticker===trade.ticker&&e.side===trade.direction&&["EXIT WARNING","CASH OUT"].includes(e.type)&&Math.abs(Date.parse(e.time)-Date.parse(trade.exitTime||0))<15*60*1000);
+ return (entry.length?"Entry signal logged":"No matching entry signal")+"; "+(exit.length?"exit signal logged":"no matching exit signal");
+}
+async function kalshiLoadTradeLedger(){
+ if(kalshiLedgerInFlight)return;
+ if(document.getElementById("kalshiConnectionState")?.textContent!=="DEMO CONNECTED"){
+  document.getElementById("kalshiLedgerStatus").textContent="Connect to Kalshi DEMO first.";return;
+ }
+ kalshiLedgerInFlight=true;
+ const status=document.getElementById("kalshiLedgerStatus");
+ status.textContent="Loading complete DEMO fill history and matching trades…";
+ try{
+  const r=await kalshiApi("trade-ledger");
+  if(r.environment!=="DEMO"||r.readOnly!==true||r.orderSubmission!==false)throw new Error("Server did not confirm a read-only DEMO ledger.");
+  document.getElementById("kalshiLedgerCount").textContent=String((r.closedTrades||[]).length);
+  document.getElementById("kalshiLedgerGross").textContent=kalshiLedgerMoney(r.realizedGrossPnl);
+  document.getElementById("kalshiLedgerFees").textContent=kalshiLedgerMoney(r.realizedFees);
+  document.getElementById("kalshiLedgerNet").textContent=kalshiLedgerMoney(r.realizedNetPnl);
+  const warnings=[];
+  if(!r.historyComplete)warnings.push("INCOMPLETE HISTORY: more than 4,000 fills or pagination did not finish. P&L is not complete.");
+  if(!r.fieldsValid)warnings.push("Some fills lacked valid ticker, side, action, quantity or price fields. Ledger totals may be incomplete.");
+  if(!r.feesValid)warnings.push("Some fee fields were invalid. Net P&L is not fully verified.");
+  if((r.unmatchedSells||[]).length)warnings.push(r.unmatchedSells.length+" sell fill(s) could not be matched to a recorded earlier buy. Older buy history may be missing.");
+  if(r.ledgerValid)warnings.push("LEDGER CHECKS PASSED: complete fill history, recognized fields, valid fees and no unmatched sells.");
+  else warnings.push("NET P&L IS PROVISIONAL. Do not treat it as verified until all ledger checks pass.");
+  warnings.push("All DEMO fills retrieved: "+r.fillCount+" · open unmatched buy lots: "+(r.openLots||[]).length+" · all account fees reported: "+kalshiLedgerMoney(r.totalFees));
+  document.getElementById("kalshiLedgerWarnings").textContent=warnings.join("\n");
+  const rows=(r.closedTrades||[]).slice(0,50).map(t=>"<tr><td>"+t.ticker+" / "+t.direction+"</td><td>"+t.contracts+"</td><td>"+kalshiLedgerMoney(t.entryPrice)+"<br><small>"+(t.entryTime||"")+"</small></td><td>"+kalshiLedgerMoney(t.exitPrice)+"<br><small>"+(t.exitTime||"")+"</small></td><td>"+kalshiLedgerMoney(t.fees)+"</td><td>"+kalshiLedgerMoney(t.netPnl)+"</td><td>"+kalshiFindModelSignal(t)+"</td></tr>");
+  document.getElementById("kalshiLedgerRows").innerHTML=rows.join("")||'<tr><td colspan="7">No completed buy/sell pairs found in the returned fill history.</td></tr>';
+  status.textContent="Loaded "+new Date(r.checkedAt||Date.now()).toLocaleTimeString()+" · "+(r.ledgerValid?"verified fill matching":"provisional ledger");
+ }catch(e){status.textContent="Ledger unavailable: "+e.message;}
+ finally{kalshiLedgerInFlight=false;}
+}
 function setupKalshiLifecycle(){
  kalshiRenderLifecycleHistory();
  document.getElementById("kalshiLifeRefresh")?.addEventListener("click",kalshiUpdateLifecycle);
+ document.getElementById("kalshiLedgerRefresh")?.addEventListener("click",kalshiLoadTradeLedger);
 }
 let kalshiPreflightInFlight=false;
 async function kalshiRunPreflight(){
